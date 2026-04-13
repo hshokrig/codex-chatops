@@ -1,0 +1,57 @@
+repos:
+  - slug: mint
+    category_name: 10-mint
+    session_channel_id: "000000000000000001"
+    events_channel_id: "000000000000000002"
+    deployments_channel_id: "000000000000000003"
+    local_path: /path/to/mint
+    default_branch: main
+    codex_profile: default
+    allowed_users:
+      - "123456789012345678"
+    allowed_roles:
+      - "234567890123456789"
+    checks:
+      - pnpm test
+      - pnpm lint
+    deploy_workflows:
+      staging:
+        workflow_id: deploy-staging.yml
+        ref: session-branch
+        inputs:
+          environment: staging
+      production:
+        workflow_id: deploy-production.yml
+        ref: default-branch
+        inputs:
+          environment: production
+    require_pr_approval: true
+    require_prod_confirmation: true
+  - slug: n2cis
+    category_name: 11-n2cis
+    session_channel_id: "000000000000000011"
+    events_channel_id: "000000000000000012"
+    deployments_channel_id: "000000000000000013"
+    local_path: /path/to/n2cis
+    default_branch: main
+    codex_profile: default
+    allowed_users: []
+    allowed_roles: []
+    checks: []
+    deploy_workflows: {}
+    require_pr_approval: true
+    require_prod_confirmation: true
+  - slug: tandvy
+    category_name: 12-tandvy
+    session_channel_id: "000000000000000021"
+    events_channel_id: "000000000000000022"
+    deployments_channel_id: "000000000000000023"
+    local_path: /path/to/tandvy
+    default_branch: main
+    codex_profile: default
+    allowed_users: []
+    allowed_roles: []
+    checks: []
+    deploy_workflows: {}
+    require_pr_approval: true
+    require_prod_confirmation: true

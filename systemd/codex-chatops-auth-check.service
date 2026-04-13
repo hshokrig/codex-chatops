@@ -1,0 +1,7 @@
+[Unit]
+Description=Codex auth health check
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/Projects/codex-chatops
+ExecStart=/home/hossein/.vscode/extensions/openai.chatgpt-26.409.20454-linux-x64/bin/linux-x86_64/codex login status

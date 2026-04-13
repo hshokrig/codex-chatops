@@ -1,0 +1,258 @@
+import { randomUUID } from "node:crypto";
+
+import { type Client, type GuildMember, type Message, type Snowflake } from "discord.js";
+
+import { buildSessionActionRows } from "./components.js";
+import type { ThreadManager } from "./thread-manager.js";
+import type { RepoRegistry } from "../../core/repo-registry.js";
+import type { RunOrchestrator } from "../../core/run-orchestrator.js";
+import type { SessionManager } from "../../core/session-manager.js";
+import type { DatabaseClient } from "../../persistence/db.js";
+import type { SummaryRenderer } from "../../core/summary-renderer.js";
+import { logger } from "../../lib/logger.js";
+import type {
+  EnvironmentConfig,
+  MessageAttachmentInput,
+  RepoDefinition,
+  SessionRecord
+} from "../../types/domain.js";
+
+function stripBotMention(content: string, botId: string): string {
+  return content
+    .replaceAll(`<@${botId}>`, "")
+    .replaceAll(`<@!${botId}>`, "")
+    .trim();
+}
+
+type SendableChannel = { send: (options: string | { content: string; components?: unknown[] }) => Promise<unknown> };
+
+function isSendableChannel(channel: unknown): channel is SendableChannel {
+  return Boolean(channel) && typeof (channel as { send?: unknown }).send === "function";
+}
+
+async function sendText(channel: unknown, content: string): Promise<void> {
+  if (!isSendableChannel(channel)) {
+    return;
+  }
+  await channel.send(content);
+}
+
+function normalizePrompt(prompt: string, attachments: MessageAttachmentInput[]): string {
+  if (prompt.trim()) {
+    return prompt.trim();
+  }
+  if (attachments.length > 0) {
+    return "Review the attached files and summarize anything relevant.";
+  }
+  return "";
+}
+
+export interface EventHandlerDependencies {
+  client: Client;
+  env: EnvironmentConfig;
+  db: DatabaseClient;
+  repoRegistry: RepoRegistry;
+  sessionManager: SessionManager;
+  runOrchestrator: RunOrchestrator;
+  threadManager: ThreadManager;
+  summaryRenderer: SummaryRenderer;
+  activeRuns: Map<string, AbortController>;
+}
+
+export class DiscordEventHandler {
+  constructor(private readonly deps: EventHandlerDependencies) {}
+
+  register(): void {
+    this.deps.client.on("messageCreate", async (message) => {
+      await this.handleMessage(message);
+    });
+  }
+
+  async handleMessage(message: Message): Promise<void> {
+    if (message.author.bot || !message.inGuild()) {
+      return;
+    }
+
+    const botId = this.deps.client.user?.id;
+    if (!botId) {
+      return;
+    }
+
+    const isThread = message.channel.isThread();
+    const rootChannelId = isThread ? message.channel.parentId : message.channelId;
+    if (!rootChannelId) {
+      return;
+    }
+    const mentioned = message.mentions.users.has(botId);
+
+    const route = isThread
+      ? this.deps.sessionManager.getByThreadId(message.channelId)
+      : null;
+
+    if (isThread && route) {
+      const prompt = mentioned ? stripBotMention(message.content, botId) : message.content.trim();
+      await this.continueSession(message, route, prompt, this.extractAttachments(message));
+      return;
+    }
+
+    const binding = this.deps.repoRegistry.resolveBinding(rootChannelId);
+    if (!binding || binding.purpose !== "session-intake") {
+      return;
+    }
+
+    if (isThread) {
+      return;
+    }
+
+    const repo = this.deps.repoRegistry.resolveSessionRepo(rootChannelId);
+    if (!repo) {
+      await message.reply("This channel is not bound to a managed repository.");
+      return;
+    }
+
+    if (!this.isAuthorized(repo, message.member)) {
+      await message.reply("You are not authorized to operate this repository.");
+      return;
+    }
+
+    const prompt = mentioned ? stripBotMention(message.content, botId) : message.content.trim();
+    const attachments = this.extractAttachments(message);
+    const normalizedPrompt = normalizePrompt(prompt, attachments);
+    if (!normalizedPrompt && attachments.length === 0) {
+      await message.reply("Send a task description or attach a file to start a session.");
+      return;
+    }
+
+    const thread = await this.deps.threadManager.createSessionThread(message, repo, normalizedPrompt);
+    const session = await this.deps.sessionManager.createSession({
+      guildId: message.guildId,
+      channelId: rootChannelId,
+      threadId: thread.id,
+      repo,
+      requestedBy: message.author.id,
+      title: normalizedPrompt
+    });
+    await this.runInThread(thread, repo, session, normalizedPrompt, message.author.id, attachments);
+  }
+
+  private async continueSession(
+    message: Message,
+    session: SessionRecord,
+    prompt: string,
+    attachments: MessageAttachmentInput[]
+  ): Promise<void> {
+    const repo = this.deps.repoRegistry.resolveRepoById(session.repoId);
+    if (!repo) {
+      await message.reply("The repo mapping for this session no longer exists.");
+      return;
+    }
+    if (session.status === "archived") {
+      await message.reply("This session has been archived and will not accept new runs.");
+      return;
+    }
+    if (!this.isAuthorized(repo, message.member)) {
+      await message.reply("You are not authorized to continue this repository session.");
+      return;
+    }
+    const normalizedPrompt = normalizePrompt(prompt, attachments);
+    if (!normalizedPrompt && attachments.length === 0) {
+      await message.reply("Send a message in this thread or attach a file to continue the session.");
+      return;
+    }
+    await this.runInThread(message.channel, repo, session, normalizedPrompt, message.author.id, attachments);
+  }
+
+  private async runInThread(
+    thread: unknown,
+    repo: RepoDefinition,
+    session: SessionRecord,
+    prompt: string,
+    requestedBy: Snowflake,
+    attachments: MessageAttachmentInput[]
+  ): Promise<void> {
+    if (this.deps.activeRuns.has(session.id)) {
+      await sendText(thread, "A run is already active in this session.");
+      return;
+    }
+
+    const controller = new AbortController();
+    this.deps.activeRuns.set(session.id, controller);
+    let progressTimer: ReturnType<typeof setTimeout> | undefined;
+
+    try {
+      const attachmentSummary =
+        attachments.length === 0 ? "" : ` with ${attachments.length} attachment${attachments.length === 1 ? "" : "s"}`;
+      await sendText(thread, `Starting Codex run for \`${repo.slug}\` on \`${session.branchName}\`${attachmentSummary}.`);
+      progressTimer = setTimeout(() => {
+        void sendText(
+          thread,
+          `Codex is still working on \`${repo.slug}\`. You can keep this thread open and wait for the final summary.`
+        );
+      }, 15000);
+      const result = await this.deps.runOrchestrator.execute({
+        session,
+        repo,
+        prompt,
+        requestedBy,
+        attachments,
+        signal: controller.signal
+      });
+
+      if (isSendableChannel(thread)) {
+        await thread.send({
+          content: result.summary,
+          components: buildSessionActionRows(session.id)
+        });
+      }
+
+      const eventsChannel = repo.eventsChannelId
+        ? await this.deps.client.channels.fetch(repo.eventsChannelId)
+        : null;
+      await sendText(eventsChannel, this.deps.summaryRenderer.renderRepoEvent(repo, session, result.summary));
+
+      const auditChannelId = this.deps.env.auditChannelId;
+      if (auditChannelId) {
+        const auditChannel = await this.deps.client.channels.fetch(auditChannelId);
+        await sendText(auditChannel, `Run completed for session ${session.id} in ${repo.slug}`);
+      }
+
+      this.deps.db.insertEvent({
+        id: randomUUID(),
+        sessionId: session.id,
+        runId: result.run.id,
+        ts: new Date().toISOString(),
+        kind: "run.completed",
+        payloadJson: JSON.stringify({
+          repoSlug: repo.slug,
+          changedFiles: result.changedFiles,
+          hasUncommittedChanges: result.hasUncommittedChanges
+        })
+      });
+    } catch (error) {
+      logger.error({ err: error, sessionId: session.id }, "Run failed");
+      await sendText(thread, `Run failed: ${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      if (progressTimer) {
+        clearTimeout(progressTimer);
+      }
+      this.deps.activeRuns.delete(session.id);
+    }
+  }
+
+  private isAuthorized(repo: RepoDefinition, member: GuildMember | null): boolean {
+    if (!member) {
+      return false;
+    }
+    return this.deps.repoRegistry.isAuthorized(repo, member.id, [...member.roles.cache.keys()]);
+  }
+
+  private extractAttachments(message: Message): MessageAttachmentInput[] {
+    return [...message.attachments.values()].map((attachment) => ({
+      id: attachment.id,
+      name: attachment.name,
+      url: attachment.url,
+      contentType: attachment.contentType ?? undefined,
+      size: attachment.size ?? undefined
+    }));
+  }
+}

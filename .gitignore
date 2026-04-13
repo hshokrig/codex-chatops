@@ -1,0 +1,10 @@
+node_modules/
+dist/
+coverage/
+.env
+.chatops/
+.secrets/*
+!.secrets/.gitignore
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal

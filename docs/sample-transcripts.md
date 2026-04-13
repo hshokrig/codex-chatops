@@ -1,0 +1,47 @@
+# Sample Transcripts
+
+## Session Start
+`@RepoBot fix the flaky login tests and tighten retry handling`
+
+Bot creates thread:
+`mint: fix the flaky login tests and tighten retry handling`
+
+Bot summary:
+`Run SUCCEEDED for mint
+Session: <session-id>
+Branch: chatops/mint/<session-id>
+Changed files (2): src/auth/retry.ts, tests/login.spec.ts
+Checks:
+PASS pnpm test
+PASS pnpm lint
+Uncommitted changes: yes
+Pending approvals: None`
+
+## Follow-Up
+`@RepoBot add timeout coverage too`
+
+Bot summary:
+`Run SUCCEEDED for mint
+Changed files (3): src/auth/retry.ts, tests/login.spec.ts, tests/timeout.spec.ts`
+
+## Commit Approval
+Operator clicks `Commit`
+
+Bot posts:
+`Approval requested: commit`
+
+Approver clicks `Approve`
+
+Bot response:
+`Commit created: <sha>`
+
+## Deploy Prod
+Operator clicks `Deploy Prod`
+
+Bot response:
+`Production deploy needs a second confirmation before approval is requested.`
+
+Operator clicks `Confirm Prod Deploy`
+
+Bot posts:
+`Approval requested: deploy-production`
