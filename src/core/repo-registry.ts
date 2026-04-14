@@ -32,10 +32,16 @@ export class RepoRegistry {
     return this.db.listRepos();
   }
 
-  isAuthorized(repo: RepoDefinition, userId: string, roleIds: string[]): boolean {
-    const userAllowed = repo.allowedUsers.length === 0 || repo.allowedUsers.includes(userId);
+  isAuthorized(
+    repo: RepoDefinition,
+    userId: string,
+    roleIds: string[]
+  ): boolean {
+    const userAllowed =
+      repo.allowedUsers.length === 0 || repo.allowedUsers.includes(userId);
     const roleAllowed =
-      repo.allowedRoles.length === 0 || roleIds.some((roleId) => repo.allowedRoles.includes(roleId));
+      repo.allowedRoles.length === 0 ||
+      roleIds.some((roleId) => repo.allowedRoles.includes(roleId));
     return userAllowed && roleAllowed;
   }
 }

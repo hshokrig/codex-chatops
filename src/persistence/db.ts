@@ -166,7 +166,10 @@ export class DatabaseClient {
 
   private upsertGlobalBinding(
     channelId: string | undefined,
-    purpose: Extract<ChannelPurpose, "global-status" | "global-usage" | "global-audit" | "global-approvals">
+    purpose: Extract<
+      ChannelPurpose,
+      "global-status" | "global-usage" | "global-audit" | "global-approvals"
+    >
   ): void {
     if (!channelId) {
       return;
@@ -200,7 +203,9 @@ export class DatabaseClient {
 
   getChannelBinding(channelId: string): DiscordChannelBinding | null {
     const row = this.sqlite
-      .prepare("SELECT channel_id, repo_id, purpose FROM channel_bindings WHERE channel_id = ?")
+      .prepare(
+        "SELECT channel_id, repo_id, purpose FROM channel_bindings WHERE channel_id = ?"
+      )
       .get(channelId) as
       | { channel_id: string; repo_id: string | null; purpose: ChannelPurpose }
       | undefined;
@@ -260,16 +265,22 @@ export class DatabaseClient {
   }
 
   listRepos(): RepoDefinition[] {
-    const rows = this.sqlite.prepare("SELECT * FROM repos ORDER BY slug").all() as RepoRecord[];
+    const rows = this.sqlite
+      .prepare("SELECT * FROM repos ORDER BY slug")
+      .all() as RepoRecord[];
     return rows.map((row) => this.inflateRepo(row));
   }
 
   private inflateRepo(row: RepoRecord): RepoDefinition {
     const bindings = this.sqlite
-      .prepare("SELECT channel_id, purpose FROM channel_bindings WHERE repo_id = ?")
+      .prepare(
+        "SELECT channel_id, purpose FROM channel_bindings WHERE repo_id = ?"
+      )
       .all(row.id) as Array<{ channel_id: string; purpose: ChannelPurpose }>;
 
-    const purposeToChannel = new Map(bindings.map((binding) => [binding.purpose, binding.channel_id]));
+    const purposeToChannel = new Map(
+      bindings.map((binding) => [binding.purpose, binding.channel_id])
+    );
     return {
       ...rowToRepoDefinition(row),
       sessionChannelId: purposeToChannel.get("session-intake") ?? "",
@@ -332,7 +343,9 @@ export class DatabaseClient {
 
   updateSessionCodexThread(sessionId: string, codexThreadId: string): void {
     this.sqlite
-      .prepare("UPDATE sessions SET codex_thread_id = ?, updated_at = ? WHERE id = ?")
+      .prepare(
+        "UPDATE sessions SET codex_thread_id = ?, updated_at = ? WHERE id = ?"
+      )
       .run(codexThreadId, nowIso(), sessionId);
   }
 
@@ -368,7 +381,10 @@ export class DatabaseClient {
       });
   }
 
-  updateRun(runId: string, patch: { status: RunStatus; resultSummary?: string; completedAt?: string }): void {
+  updateRun(
+    runId: string,
+    patch: { status: RunStatus; resultSummary?: string; completedAt?: string }
+  ): void {
     this.sqlite
       .prepare(
         `
@@ -391,14 +407,18 @@ export class DatabaseClient {
 
   getLatestRunForSession(sessionId: string): RunRecord | null {
     const row = this.sqlite
-      .prepare("SELECT * FROM runs WHERE session_id = ? ORDER BY created_at DESC LIMIT 1")
+      .prepare(
+        "SELECT * FROM runs WHERE session_id = ? ORDER BY created_at DESC LIMIT 1"
+      )
       .get(sessionId) as JsonRow | undefined;
     return row ? this.mapRun(row) : null;
   }
 
   listRunsForSession(sessionId: string): RunRecord[] {
     const rows = this.sqlite
-      .prepare("SELECT * FROM runs WHERE session_id = ? ORDER BY created_at ASC")
+      .prepare(
+        "SELECT * FROM runs WHERE session_id = ? ORDER BY created_at ASC"
+      )
       .all(sessionId) as JsonRow[];
     return rows.map((row) => this.mapRun(row));
   }
@@ -435,7 +455,10 @@ export class DatabaseClient {
     return row ? this.mapApproval(row) : null;
   }
 
-  getPendingApprovalByType(sessionId: string, type: ApprovalType): ApprovalRecord | null {
+  getPendingApprovalByType(
+    sessionId: string,
+    type: ApprovalType
+  ): ApprovalRecord | null {
     const row = this.sqlite
       .prepare(
         "SELECT * FROM approvals WHERE session_id = ? AND type = ? AND status = 'pending' ORDER BY created_at DESC LIMIT 1"
@@ -446,7 +469,9 @@ export class DatabaseClient {
 
   listPendingApprovals(sessionId: string): ApprovalRecord[] {
     const rows = this.sqlite
-      .prepare("SELECT * FROM approvals WHERE session_id = ? AND status = 'pending' ORDER BY created_at ASC")
+      .prepare(
+        "SELECT * FROM approvals WHERE session_id = ? AND status = 'pending' ORDER BY created_at ASC"
+      )
       .all(sessionId) as JsonRow[];
     return rows.map((row) => this.mapApproval(row));
   }
@@ -537,7 +562,9 @@ export class DatabaseClient {
 
   listUsageRollups(date: string): UsageRollup[] {
     const rows = this.sqlite
-      .prepare("SELECT * FROM usage_rollups WHERE date = ? ORDER BY repo_slug ASC")
+      .prepare(
+        "SELECT * FROM usage_rollups WHERE date = ? ORDER BY repo_slug ASC"
+      )
       .all(date) as JsonRow[];
     return rows.map((row) => ({
       date: String(row.date),

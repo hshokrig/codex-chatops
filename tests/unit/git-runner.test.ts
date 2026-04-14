@@ -40,7 +40,9 @@ describe("GitRunner", () => {
     git(root, "init", "--initial-branch=feature/next", repoPath);
     git(repoPath, "config", "user.name", "Codex");
     git(repoPath, "config", "user.email", "codex@example.com");
-    execFileSync("bash", ["-lc", "printf 'hello\\n' > README.md"], { cwd: repoPath });
+    execFileSync("bash", ["-lc", "printf 'hello\\n' > README.md"], {
+      cwd: repoPath
+    });
     git(repoPath, "add", "README.md");
     git(repoPath, "commit", "-m", "initial");
 
@@ -67,7 +69,9 @@ describe("GitRunner", () => {
     );
 
     expect(workspace.branchName).toBe("chatops/repo/session-1");
-    expect(workspace.worktreePath).toBe(path.join(chatopsRoot, "worktrees", "session-1"));
+    expect(workspace.worktreePath).toBe(
+      path.join(chatopsRoot, "worktrees", "session-1")
+    );
     expect(git(repoPath, "worktree", "list")).toContain(workspace.worktreePath);
   });
 });

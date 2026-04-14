@@ -1,6 +1,7 @@
 # Sample Transcripts
 
 ## Session Start
+
 `@RepoBot fix the flaky login tests and tighten retry handling`
 
 Bot creates thread:
@@ -18,6 +19,7 @@ Uncommitted changes: yes
 Pending approvals: None`
 
 ## Follow-Up
+
 `@RepoBot add timeout coverage too`
 
 Bot summary:
@@ -25,6 +27,7 @@ Bot summary:
 Changed files (3): src/auth/retry.ts, tests/login.spec.ts, tests/timeout.spec.ts`
 
 ## Commit Approval
+
 Operator clicks `Commit`
 
 Bot posts:
@@ -36,6 +39,7 @@ Bot response:
 `Commit created: <sha>`
 
 ## Deploy Prod
+
 Operator clicks `Deploy Prod`
 
 Bot response:

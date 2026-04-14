@@ -1,4 +1,9 @@
-import { ChannelType, type CategoryChannel, type Client, type GuildBasedChannel } from "discord.js";
+import {
+  ChannelType,
+  type CategoryChannel,
+  type Client,
+  type GuildBasedChannel
+} from "discord.js";
 
 import type { RepoDefinition } from "../../types/domain.js";
 
@@ -27,10 +32,14 @@ export class DiscordBootstrapService {
     const existingValues = [...existingChannels.values()];
     const report: BootstrapReport = { created: [], validated: [], missing: [] };
 
-    const ensureCategory = async (name: string): Promise<CategoryChannel | null> => {
+    const ensureCategory = async (
+      name: string
+    ): Promise<CategoryChannel | null> => {
       const match = existingValues.find(
         (channel): channel is CategoryChannel =>
-          channel !== null && channel.type === ChannelType.GuildCategory && channel.name === name
+          channel !== null &&
+          channel.type === ChannelType.GuildCategory &&
+          channel.name === name
       );
       if (match) {
         report.validated.push(`category:${name}`);
@@ -97,16 +106,40 @@ export class DiscordBootstrapService {
     };
 
     const controlCategory = await ensureCategory("00-control");
-    await ensureTextChannel(input.globalChannels.statusChannelId, "codex-status", controlCategory);
-    await ensureTextChannel(input.globalChannels.approvalsChannelId, "codex-approvals", controlCategory);
-    await ensureTextChannel(input.globalChannels.usageChannelId, "codex-usage", controlCategory);
-    await ensureTextChannel(input.globalChannels.auditChannelId, "codex-audit", controlCategory);
+    await ensureTextChannel(
+      input.globalChannels.statusChannelId,
+      "codex-status",
+      controlCategory
+    );
+    await ensureTextChannel(
+      input.globalChannels.approvalsChannelId,
+      "codex-approvals",
+      controlCategory
+    );
+    await ensureTextChannel(
+      input.globalChannels.usageChannelId,
+      "codex-usage",
+      controlCategory
+    );
+    await ensureTextChannel(
+      input.globalChannels.auditChannelId,
+      "codex-audit",
+      controlCategory
+    );
 
     for (const repo of input.repos) {
       const category = await ensureCategory(repo.categoryName);
-      await ensureTextChannel(repo.sessionChannelId, "codex-sessions", category);
+      await ensureTextChannel(
+        repo.sessionChannelId,
+        "codex-sessions",
+        category
+      );
       await ensureTextChannel(repo.eventsChannelId, "codex-events", category);
-      await ensureTextChannel(repo.deploymentsChannelId, "codex-deployments", category);
+      await ensureTextChannel(
+        repo.deploymentsChannelId,
+        "codex-deployments",
+        category
+      );
     }
 
     return report;

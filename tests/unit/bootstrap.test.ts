@@ -5,7 +5,15 @@ import { createTestRepo } from "../helpers/test-db.js";
 
 function createBootstrapClient() {
   const created: string[] = [];
-  const categories = new Map<string, { id: string; name: string; type: number; edit?: (input: { name: string; parent?: string }) => Promise<void> }>();
+  const categories = new Map<
+    string,
+    {
+      id: string;
+      name: string;
+      type: number;
+      edit?: (input: { name: string; parent?: string }) => Promise<void>;
+    }
+  >();
   const channels = new Map<
     string,
     {

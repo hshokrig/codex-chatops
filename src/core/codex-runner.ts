@@ -1,6 +1,11 @@
 import { spawn } from "node:child_process";
 
-import { Codex, type ThreadEvent, type ThreadItem, type ThreadOptions } from "@openai/codex-sdk";
+import {
+  Codex,
+  type ThreadEvent,
+  type ThreadItem,
+  type ThreadOptions
+} from "@openai/codex-sdk";
 
 import type { EnvironmentConfig } from "../types/domain.js";
 
@@ -21,7 +26,11 @@ export interface CodexRunResult {
 }
 
 function eventToMessage(item: ThreadItem): string | null {
-  if (item.type === "agent_message" || item.type === "reasoning" || item.type === "error") {
+  if (
+    item.type === "agent_message" ||
+    item.type === "reasoning" ||
+    item.type === "error"
+  ) {
     return "text" in item ? item.text : "message" in item ? item.message : null;
   }
   return null;
@@ -66,7 +75,11 @@ export class CodexRunner {
       if (event.type === "thread.started") {
         threadId = event.thread_id;
       }
-      if (event.type === "item.started" || event.type === "item.updated" || event.type === "item.completed") {
+      if (
+        event.type === "item.started" ||
+        event.type === "item.updated" ||
+        event.type === "item.completed"
+      ) {
         items.set(event.item.id, event.item);
         const maybeMessage = eventToMessage(event.item);
         if (maybeMessage) {
@@ -126,20 +139,29 @@ export class CodexRunner {
       child.on("error", reject);
       child.on("close", (code) => {
         if (code !== 0) {
-          reject(new Error(`codex exec failed with code ${code}: ${stderrBuffer}`));
+          reject(
+            new Error(`codex exec failed with code ${code}: ${stderrBuffer}`)
+          );
           return;
         }
         resolve();
       });
     });
 
-    for (const line of stdoutBuffer.split("\n").map((entry) => entry.trim()).filter(Boolean)) {
+    for (const line of stdoutBuffer
+      .split("\n")
+      .map((entry) => entry.trim())
+      .filter(Boolean)) {
       const event = JSON.parse(line) as ThreadEvent;
       events.push(event);
       if (event.type === "thread.started") {
         threadId = event.thread_id;
       }
-      if (event.type === "item.started" || event.type === "item.updated" || event.type === "item.completed") {
+      if (
+        event.type === "item.started" ||
+        event.type === "item.updated" ||
+        event.type === "item.completed"
+      ) {
         const maybeMessage = eventToMessage(event.item);
         if (maybeMessage) {
           summary = maybeMessage;
@@ -157,8 +179,16 @@ export class CodexRunner {
       summary: summary.trim(),
       events,
       items: events
-        .filter((event): event is Extract<ThreadEvent, { type: "item.started" | "item.updated" | "item.completed" }> =>
-          event.type === "item.started" || event.type === "item.updated" || event.type === "item.completed"
+        .filter(
+          (
+            event
+          ): event is Extract<
+            ThreadEvent,
+            { type: "item.started" | "item.updated" | "item.completed" }
+          > =>
+            event.type === "item.started" ||
+            event.type === "item.updated" ||
+            event.type === "item.completed"
         )
         .map((event) => event.item)
     };

@@ -1,4 +1,9 @@
-import type { PreparedAttachment, RepoDefinition, RunRecord, SessionRecord } from "../types/domain.js";
+import type {
+  PreparedAttachment,
+  RepoDefinition,
+  RunRecord,
+  SessionRecord
+} from "../types/domain.js";
 
 export interface PromptBuildInput {
   repo: RepoDefinition;
@@ -17,7 +22,9 @@ export class PromptBuilder {
       input.priorRuns.length === 0
         ? "No prior runs in this session."
         : input.priorRuns
-            .map((run) => `- ${run.createdAt}: ${run.resultSummary ?? run.status}`)
+            .map(
+              (run) => `- ${run.createdAt}: ${run.resultSummary ?? run.status}`
+            )
             .join("\n");
 
     return [
@@ -51,7 +58,9 @@ export class PromptBuilder {
       priorSummary,
       "",
       "Required checks:",
-      input.checks.length === 0 ? "- No configured checks." : input.checks.map((check) => `- ${check}`).join("\n"),
+      input.checks.length === 0
+        ? "- No configured checks."
+        : input.checks.map((check) => `- ${check}`).join("\n"),
       "",
       "Artifacts to produce:",
       `- Summary path: ${input.summaryPath}`,

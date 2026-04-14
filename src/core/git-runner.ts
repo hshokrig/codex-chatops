@@ -36,7 +36,14 @@ export class GitRunner {
       await access(worktreePath, constants.F_OK);
     } catch {
       const baseRef = await this.resolveBaseRef(repoGit, repo.defaultBranch);
-      await repoGit.raw(["worktree", "add", "-b", branchName, worktreePath, baseRef]);
+      await repoGit.raw([
+        "worktree",
+        "add",
+        "-b",
+        branchName,
+        worktreePath,
+        baseRef
+      ]);
     }
 
     return { branchName, worktreePath };
@@ -65,7 +72,10 @@ export class GitRunner {
   async listChangedFiles(worktreePath: string): Promise<string[]> {
     const git = simpleGit(worktreePath);
     const diff = await git.diff(["--name-only"]);
-    return diff.split("\n").map((line) => line.trim()).filter(Boolean);
+    return diff
+      .split("\n")
+      .map((line) => line.trim())
+      .filter(Boolean);
   }
 
   async hasUncommittedChanges(worktreePath: string): Promise<boolean> {
@@ -96,7 +106,10 @@ export class GitRunner {
     return git.revparse(["HEAD"]);
   }
 
-  async runChecks(worktreePath: string, checks: string[]): Promise<CheckResult[]> {
+  async runChecks(
+    worktreePath: string,
+    checks: string[]
+  ): Promise<CheckResult[]> {
     const results: CheckResult[] = [];
 
     for (const command of checks) {

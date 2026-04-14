@@ -29,10 +29,14 @@ export class DeployRunner {
   async trigger(request: DeploymentRequest): Promise<DeploymentResult> {
     const workflow = request.repo.deployWorkflows[request.environment];
     if (!workflow) {
-      throw new Error(`No ${request.environment} deployment configured for ${request.repo.slug}`);
+      throw new Error(
+        `No ${request.environment} deployment configured for ${request.repo.slug}`
+      );
     }
     if (!request.repo.githubOwner || !request.repo.githubRepo) {
-      throw new Error(`Repo ${request.repo.slug} is missing github_owner/github_repo`);
+      throw new Error(
+        `Repo ${request.repo.slug} is missing github_owner/github_repo`
+      );
     }
 
     const ref =
@@ -43,7 +47,12 @@ export class DeployRunner {
           : workflow.ref;
 
     if (this.env.githubUseGhCli) {
-      await this.runGhDispatch(request.repo, workflow.workflow_id, ref, workflow.inputs ?? {});
+      await this.runGhDispatch(
+        request.repo,
+        workflow.workflow_id,
+        ref,
+        workflow.inputs ?? {}
+      );
       return {
         workflowId: workflow.workflow_id,
         state: "queued",

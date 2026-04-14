@@ -2,7 +2,10 @@ import { config as loadDotenv } from "dotenv";
 
 import { loadEnv } from "../config/env.js";
 import { loadRepoMap } from "../config/load-config.js";
-import { createDiscordClient, registerSlashCommands } from "../transport/discord/client.js";
+import {
+  createDiscordClient,
+  registerSlashCommands
+} from "../transport/discord/client.js";
 import { DiscordBootstrapService } from "../core/bootstrap/discord-bootstrap.js";
 
 loadDotenv({ path: ".env", quiet: true });

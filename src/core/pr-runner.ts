@@ -25,11 +25,18 @@ export class PullRequestRunner {
     body: string;
   }): Promise<PullRequestResult> {
     if (!input.repo.githubOwner || !input.repo.githubRepo) {
-      throw new Error(`Repo ${input.repo.slug} is missing github_owner/github_repo`);
+      throw new Error(
+        `Repo ${input.repo.slug} is missing github_owner/github_repo`
+      );
     }
 
     if (this.env.githubUseGhCli) {
-      return this.openWithGh(input.repo, input.branchName, input.title, input.body);
+      return this.openWithGh(
+        input.repo,
+        input.branchName,
+        input.title,
+        input.body
+      );
     }
 
     if (!this.octokit) {

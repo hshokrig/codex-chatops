@@ -33,7 +33,11 @@ export class ApprovalService {
     return approval;
   }
 
-  approve(approvalId: string, decidedBy: string, payload?: Record<string, unknown>): ApprovalRecord {
+  approve(
+    approvalId: string,
+    decidedBy: string,
+    payload?: Record<string, unknown>
+  ): ApprovalRecord {
     const approval = this.db.getApprovalById(approvalId);
     if (!approval) {
       throw new Error(`Approval ${approvalId} not found`);
@@ -51,7 +55,11 @@ export class ApprovalService {
     return updated;
   }
 
-  reject(approvalId: string, decidedBy: string, payload?: Record<string, unknown>): ApprovalRecord {
+  reject(
+    approvalId: string,
+    decidedBy: string,
+    payload?: Record<string, unknown>
+  ): ApprovalRecord {
     const approval = this.db.getApprovalById(approvalId);
     if (!approval) {
       throw new Error(`Approval ${approvalId} not found`);

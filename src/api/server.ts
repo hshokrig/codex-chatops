@@ -33,7 +33,10 @@ export async function createApiServer(deps: ApiServerDependencies) {
   }));
 
   fastify.get("/readyz", async () => ({
-    ok: deps.readyState.discordConnected && deps.readyState.configLoaded && deps.readyState.codexAuthHealthy,
+    ok:
+      deps.readyState.discordConnected &&
+      deps.readyState.configLoaded &&
+      deps.readyState.codexAuthHealthy,
     ...deps.readyState
   }));
 
@@ -55,7 +58,8 @@ export async function createApiServer(deps: ApiServerDependencies) {
 
   fastify.post("/admin/reload-config", async () => ({
     ok: true,
-    message: "Config reload is handled by process restart in this implementation."
+    message:
+      "Config reload is handled by process restart in this implementation."
   }));
 
   fastify.post("/admin/bootstrap-discord", async () => {

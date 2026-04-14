@@ -7,7 +7,12 @@ import type { GitRunner } from "./git-runner.js";
 import type { PromptBuilder } from "./prompt-builder.js";
 import type { SummaryRenderer } from "./summary-renderer.js";
 import type { DatabaseClient } from "../persistence/db.js";
-import type { MessageAttachmentInput, RepoDefinition, RunRecord, SessionRecord } from "../types/domain.js";
+import type {
+  MessageAttachmentInput,
+  RepoDefinition,
+  RunRecord,
+  SessionRecord
+} from "../types/domain.js";
 
 function nowIso(): string {
   return new Date().toISOString();
@@ -53,7 +58,9 @@ export class RunOrchestrator {
     this.db.createRun(run);
     this.db.updateSessionStatus(input.session.id, "running");
 
-    const priorRuns = this.db.listRunsForSession(input.session.id).filter((item) => item.id !== runId);
+    const priorRuns = this.db
+      .listRunsForSession(input.session.id)
+      .filter((item) => item.id !== runId);
     const preparedAttachments = await this.artifactWriter.prepareAttachments(
       input.session.id,
       runId,
@@ -66,30 +73,52 @@ export class RunOrchestrator {
       priorRuns,
       checks: input.repo.checks,
       attachments: preparedAttachments,
-      summaryPath: path.join(this.artifactWriter.runRoot(input.session.id, runId), "summary.md"),
-      checksPath: path.join(this.artifactWriter.runRoot(input.session.id, runId), "checks.md")
+      summaryPath: path.join(
+        this.artifactWriter.runRoot(input.session.id, runId),
+        "summary.md"
+      ),
+      checksPath: path.join(
+        this.artifactWriter.runRoot(input.session.id, runId),
+        "checks.md"
+      )
     });
 
     const codexRequest = {
       prompt,
       worktreePath: input.session.worktreePath,
-      ...(input.session.codexThreadId ? { threadId: input.session.codexThreadId } : {}),
+      ...(input.session.codexThreadId
+        ? { threadId: input.session.codexThreadId }
+        : {}),
       ...(input.signal ? { signal: input.signal } : {})
     };
     const codexResult = await this.codexRunner.run(codexRequest);
 
-    if (codexResult.threadId !== input.session.codexThreadId && codexResult.threadId) {
+    if (
+      codexResult.threadId !== input.session.codexThreadId &&
+      codexResult.threadId
+    ) {
       this.db.updateSessionCodexThread(input.session.id, codexResult.threadId);
     }
 
-    const checks = await this.gitRunner.runChecks(input.session.worktreePath, input.repo.checks);
-    const changedFiles = await this.gitRunner.listChangedFiles(input.session.worktreePath);
-    const patchDiff = await this.gitRunner.captureDiff(input.session.worktreePath);
-    const hasUncommittedChanges = await this.gitRunner.hasUncommittedChanges(input.session.worktreePath);
+    const checks = await this.gitRunner.runChecks(
+      input.session.worktreePath,
+      input.repo.checks
+    );
+    const changedFiles = await this.gitRunner.listChangedFiles(
+      input.session.worktreePath
+    );
+    const patchDiff = await this.gitRunner.captureDiff(
+      input.session.worktreePath
+    );
+    const hasUncommittedChanges = await this.gitRunner.hasUncommittedChanges(
+      input.session.worktreePath
+    );
     const pendingApprovals = this.db.listPendingApprovals(input.session.id);
     const renderInputRun: RunRecord = {
       ...run,
-      status: checks.some((check) => check.exitCode !== 0) ? "failed" : "succeeded",
+      status: checks.some((check) => check.exitCode !== 0)
+        ? "failed"
+        : "succeeded",
       resultSummary: codexResult.summary,
       completedAt: nowIso(),
       updatedAt: nowIso()
@@ -121,13 +150,18 @@ export class RunOrchestrator {
       }
     });
 
-    const finalStatus = checks.some((check) => check.exitCode !== 0) ? "failed" : "succeeded";
+    const finalStatus = checks.some((check) => check.exitCode !== 0)
+      ? "failed"
+      : "succeeded";
     this.db.updateRun(runId, {
       status: finalStatus,
       resultSummary: summary,
       completedAt: nowIso()
     });
-    this.db.updateSessionStatus(input.session.id, finalStatus === "failed" ? "failed" : "open");
+    this.db.updateSessionStatus(
+      input.session.id,
+      finalStatus === "failed" ? "failed" : "open"
+    );
 
     return {
       run: {

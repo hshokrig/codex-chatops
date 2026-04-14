@@ -5,7 +5,9 @@ import path from "node:path";
 import { DatabaseClient } from "../../src/persistence/db.js";
 import type { RepoDefinition } from "../../src/types/domain.js";
 
-export function createTestRepo(overrides: Partial<RepoDefinition> = {}): RepoDefinition {
+export function createTestRepo(
+  overrides: Partial<RepoDefinition> = {}
+): RepoDefinition {
   return {
     slug: "mint",
     categoryName: "10-mint",

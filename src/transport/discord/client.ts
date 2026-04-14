@@ -20,7 +20,10 @@ export function createDiscordClient(env: EnvironmentConfig): Client {
   });
 }
 
-export async function registerSlashCommands(client: Client, guildId: string): Promise<void> {
+export async function registerSlashCommands(
+  client: Client,
+  guildId: string
+): Promise<void> {
   if (!client.application) {
     throw new Error("Discord application is not ready");
   }
