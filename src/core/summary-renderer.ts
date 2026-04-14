@@ -36,6 +36,37 @@ export interface RepoEventInput {
   hasUncommittedChanges: boolean;
 }
 
+export interface VsCodeSessionStartedInput {
+  repo: RepoDefinition;
+  title: string;
+  workspaceName: string;
+  branchName?: string | null;
+  promptCount: number;
+}
+
+export interface VsCodeSessionActivityInput {
+  repo: RepoDefinition;
+  title: string;
+  workspaceName: string;
+  promptCount: number;
+  toolCallCount: number;
+  shellCommandCount: number;
+  patchCount: number;
+  tokensUsed: number;
+  lastActivityUnix: number;
+}
+
+function summarizeTitle(title: string, fallback: string): string {
+  const normalized = title.replace(/\s+/g, " ").trim();
+  if (!normalized) {
+    return fallback;
+  }
+  if (normalized.length <= 96) {
+    return normalized;
+  }
+  return `${normalized.slice(0, 93).trimEnd()}...`;
+}
+
 export class SummaryRenderer {
   renderRunSummary(input: RunSummaryInput): string {
     const checksSummary =
@@ -86,6 +117,30 @@ export class SummaryRenderer {
       `Runs in session: ${input.runCount}`,
       `Changed files: ${input.changedFiles.length}`,
       `Dirty worktree: ${input.hasUncommittedChanges ? "yes" : "no"}`
+    ].join("\n");
+  }
+
+  renderVsCodeSessionStarted(input: VsCodeSessionStartedInput): string {
+    return [
+      `VS Code Codex session for \`${input.repo.slug}\``,
+      `Title: ${summarizeTitle(input.title, `${input.repo.slug} session`)}`,
+      `Workspace: ${input.workspaceName}`,
+      `Branch: ${input.branchName?.trim() || input.repo.defaultBranch}`,
+      `Prompts so far: ${input.promptCount}`
+    ].join("\n");
+  }
+
+  renderVsCodeSessionActivity(input: VsCodeSessionActivityInput): string {
+    return [
+      `VS Code Codex activity for \`${input.repo.slug}\``,
+      `Title: ${summarizeTitle(input.title, `${input.repo.slug} session`)}`,
+      `Workspace: ${input.workspaceName}`,
+      `Prompts in session: ${input.promptCount}`,
+      `Tool calls observed: ${input.toolCallCount}`,
+      `Shell commands: ${input.shellCommandCount}`,
+      `Patches: ${input.patchCount}`,
+      `Tokens recorded: ${input.tokensUsed}`,
+      `Last activity: <t:${input.lastActivityUnix}:R>`
     ].join("\n");
   }
 

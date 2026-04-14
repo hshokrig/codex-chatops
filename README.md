@@ -30,7 +30,7 @@ Discord-first private ChatOps bridge for Codex running on a trusted local machin
   - `#codex-events`
   - `#codex-deployments`
 
-Use each repo category's `#codex-sessions` channel for top-level prompts. Each session becomes a Discord thread inside that channel. The paired `#codex-events` channel is a lightweight activity feed for managed sessions and does not mirror full thread content.
+Use each repo category's `#codex-sessions` channel for top-level prompts. Each session becomes a Discord thread inside that channel. The paired `#codex-events` channel is a lightweight activity feed for managed Discord sessions and mapped local VS Code Codex sessions. It does not mirror full thread content.
 
 ## Setup
 
@@ -60,6 +60,7 @@ Use each repo category's `#codex-sessions` channel for top-level prompts. Each s
 - Supported operational mode: Codex local authenticated with ChatGPT sign-in.
 - Do not store a Discord user email/password in this repo.
 - Do not copy `~/.codex/auth.json` into `.secrets/`, the repo, or `.chatops/`.
+- The service also reads lightweight metadata from `~/.codex/state_5.sqlite`, `~/.codex/logs_2.sqlite`, and `~/.codex/session_index.jsonl` to publish privacy-safe VS Code session activity for mapped repos.
 - `allowed_users` in `.secrets/repo-map.yaml` remains the Discord account allowlist for each repo.
 - If `DISCORD_OPERATOR_PASSWORD` is set, prompt-triggered runs and approval execution require a password modal before they execute.
 - Discord bots cannot inspect phone IMEI or device identifiers; this project can bind to Discord user identity, not to a specific handset.

@@ -7,7 +7,9 @@
    - `curl http://127.0.0.1:3000/healthz`
    - `curl http://127.0.0.1:3000/readyz`
 3. Check `#codex-status`, `#codex-audit`, and `#codex-usage`.
-4. Use each repo category's `#codex-events` for lightweight session activity and thread links.
+4. Use each repo category's `#codex-events` for lightweight session activity:
+   - Discord-managed session thread links
+   - privacy-safe VS Code Codex activity for mapped repos
 
 ## Starting a Session
 

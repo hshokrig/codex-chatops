@@ -16,6 +16,7 @@ import { RunOrchestrator } from "./core/run-orchestrator.js";
 import { SessionManager } from "./core/session-manager.js";
 import { SummaryRenderer } from "./core/summary-renderer.js";
 import { UsageMetricsService } from "./core/usage-metrics.js";
+import { VsCodeSessionBridge } from "./core/vscode-session-bridge.js";
 import { logger } from "./lib/logger.js";
 import { DatabaseClient } from "./persistence/db.js";
 import {
@@ -123,6 +124,11 @@ export async function createApplication() {
   const usageMetrics = new UsageMetricsService(db);
   const discordClient = createDiscordClient(env);
   const threadManager = new ThreadManager();
+  const vsCodeSessionBridge = new VsCodeSessionBridge({
+    client: discordClient,
+    repoRegistry,
+    summaryRenderer
+  });
   const runAuthorization = new RunAuthorizationService(
     env.discordOperatorPassword
   );
@@ -202,6 +208,7 @@ export async function createApplication() {
     readyState.discordConnected = true;
     publishPresence();
     await registerSlashCommands(discordClient, env.discordGuildId);
+    vsCodeSessionBridge.start();
 
     if (env.enableDiscordBootstrap) {
       const bootstrap = new DiscordBootstrapService(discordClient);
@@ -278,6 +285,7 @@ export async function createApplication() {
     async stop() {
       clearInterval(usageInterval);
       clearInterval(codexAuthInterval);
+      vsCodeSessionBridge.stop();
       await api.close();
       await discordClient.destroy();
       db.close();
