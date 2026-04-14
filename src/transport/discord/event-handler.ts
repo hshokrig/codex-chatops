@@ -4,6 +4,7 @@ import {
   type Client,
   type GuildMember,
   type Message,
+  type MessageCreateOptions,
   type Snowflake
 } from "discord.js";
 
@@ -11,6 +12,7 @@ import {
   buildRunAuthorizationRow,
   buildSessionActionRows
 } from "./components.js";
+import { buildCardMessage } from "./message-cards.js";
 import type {
   PendingPromptAuthorization,
   RunAuthorizationService
@@ -37,9 +39,7 @@ function stripBotMention(content: string, botId: string): string {
 }
 
 type SendableChannel = {
-  send: (
-    options: string | { content: string; components?: unknown[] }
-  ) => Promise<unknown>;
+  send: (options: string | MessageCreateOptions) => Promise<unknown>;
 };
 
 function isSendableChannel(channel: unknown): channel is SendableChannel {
@@ -49,7 +49,10 @@ function isSendableChannel(channel: unknown): channel is SendableChannel {
   );
 }
 
-async function sendText(channel: unknown, content: string): Promise<void> {
+async function sendText(
+  channel: unknown,
+  content: string | MessageCreateOptions
+): Promise<void> {
   if (!isSendableChannel(channel)) {
     return;
   }
@@ -289,7 +292,13 @@ export class DiscordEventHandler {
       : null;
     await sendText(
       eventsChannel,
-      this.deps.summaryRenderer.renderSessionStarted(repo, session)
+      buildCardMessage(
+        this.deps.summaryRenderer.renderSessionStarted(repo, session),
+        {
+          tone: "info",
+          footer: "Session created"
+        }
+      )
     );
     await this.runInThread(
       thread,
@@ -325,12 +334,24 @@ export class DiscordEventHandler {
           : ` with ${attachments.length} attachment${attachments.length === 1 ? "" : "s"}`;
       await sendText(
         thread,
-        `Starting Codex run for \`${repo.slug}\` in this session${attachmentSummary}.`
+        buildCardMessage(
+          `Starting Codex run for \`${repo.slug}\` in this session${attachmentSummary}.`,
+          {
+            tone: "info",
+            footer: session.title
+          }
+        )
       );
       progressTimer = setTimeout(() => {
         void sendText(
           thread,
-          `Codex is still working on \`${repo.slug}\`. You can keep this thread open and wait for the final summary.`
+          buildCardMessage(
+            `Codex is still working on \`${repo.slug}\`.\nYou can keep this thread open and wait for the final summary.`,
+            {
+              tone: "warning",
+              footer: session.title
+            }
+          )
         );
       }, 15000);
       const result = await this.deps.runOrchestrator.execute({
@@ -344,7 +365,10 @@ export class DiscordEventHandler {
 
       if (isSendableChannel(thread)) {
         await thread.send({
-          content: result.summary,
+          ...buildCardMessage(result.summary, {
+            tone: result.run.status === "failed" ? "danger" : "success",
+            footer: repo.slug
+          }),
           components: buildSessionActionRows(session.id)
         });
       }
@@ -358,14 +382,20 @@ export class DiscordEventHandler {
         : null;
       await sendText(
         eventsChannel,
-        this.deps.summaryRenderer.renderRepoEvent({
-          repo,
-          session,
-          run: result.run,
-          runCount,
-          changedFiles: result.changedFiles,
-          hasUncommittedChanges: result.hasUncommittedChanges
-        })
+        buildCardMessage(
+          this.deps.summaryRenderer.renderRepoEvent({
+            repo,
+            session,
+            run: result.run,
+            runCount,
+            changedFiles: result.changedFiles,
+            hasUncommittedChanges: result.hasUncommittedChanges
+          }),
+          {
+            tone: "info",
+            footer: "Repo activity"
+          }
+        )
       );
 
       const auditChannelId = this.deps.env.auditChannelId;
@@ -374,7 +404,13 @@ export class DiscordEventHandler {
           await this.deps.client.channels.fetch(auditChannelId);
         await sendText(
           auditChannel,
-          `Run completed for \`${repo.slug}\`: ${session.title} (<#${session.threadId}>)`
+          buildCardMessage(
+            `Run completed for \`${repo.slug}\`\nTitle: ${session.title}\nThread: <#${session.threadId}>`,
+            {
+              tone: "neutral",
+              footer: "codex-audit"
+            }
+          )
         );
       }
 
@@ -394,7 +430,13 @@ export class DiscordEventHandler {
       logger.error({ err: error, sessionId: session.id }, "Run failed");
       await sendText(
         thread,
-        `Run failed: ${error instanceof Error ? error.message : String(error)}`
+        buildCardMessage(
+          `Run failed: ${error instanceof Error ? error.message : String(error)}`,
+          {
+            tone: "danger",
+            footer: repo.slug
+          }
+        )
       );
     } finally {
       if (progressTimer) {

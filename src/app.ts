@@ -1,5 +1,9 @@
 import { config as loadDotenv } from "dotenv";
-import { ActivityType, type PresenceStatusData } from "discord.js";
+import {
+  ActivityType,
+  type MessageCreateOptions,
+  type PresenceStatusData
+} from "discord.js";
 
 import { loadEnv } from "./config/env.js";
 import { loadRepoMap } from "./config/load-config.js";
@@ -28,14 +32,15 @@ import {
   createDiscordClient,
   registerSlashCommands
 } from "./transport/discord/client.js";
+import { buildCardMessage } from "./transport/discord/message-cards.js";
 import { DiscordEventHandler } from "./transport/discord/event-handler.js";
 import { DiscordInteractionHandler } from "./transport/discord/interaction-handler.js";
 import { RunAuthorizationService } from "./transport/discord/run-authorization.js";
 import { ThreadManager } from "./transport/discord/thread-manager.js";
 
-function isSendableChannel(
-  channel: unknown
-): channel is { send: (content: string) => Promise<unknown> } {
+function isSendableChannel(channel: unknown): channel is {
+  send: (content: string | MessageCreateOptions) => Promise<unknown>;
+} {
   return (
     Boolean(channel) &&
     typeof (channel as { send?: unknown }).send === "function"
@@ -51,8 +56,7 @@ function buildStatusMessage(readyState: ReadyState): string {
     `ChatOps status: ${ready ? "READY" : "DEGRADED"}`,
     `Discord: ${readyState.discordConnected ? "connected" : "disconnected"}`,
     `Config: ${readyState.configLoaded ? "loaded" : "invalid"}`,
-    `Codex CLI auth: ${readyState.codexAuthHealthy ? "available" : "unavailable"}`,
-    "Note: an active VS Code window is not required; the real dependency is local Codex CLI availability."
+    `Codex CLI auth: ${readyState.codexAuthHealthy ? "available" : "unavailable"}`
   ].join("\n");
 }
 
@@ -150,7 +154,15 @@ export async function createApplication() {
     }
     const channel = await discordClient.channels.fetch(env.statusChannelId);
     if (isSendableChannel(channel)) {
-      await channel.send(message);
+      await channel.send(
+        buildCardMessage(message, {
+          tone:
+            readyState.discordConnected && readyState.codexAuthHealthy
+              ? "success"
+              : "warning",
+          footer: "codex-status"
+        })
+      );
       lastStatusMessage = message;
     }
   };
@@ -251,7 +263,15 @@ export async function createApplication() {
           "send" in channel &&
           typeof channel.send === "function"
         ) {
-          await channel.send(summaryRenderer.renderUsageMetrics(date, rollups));
+          await channel.send(
+            buildCardMessage(
+              summaryRenderer.renderUsageMetrics(date, rollups),
+              {
+                tone: "neutral",
+                footer: "codex-usage"
+              }
+            )
+          );
         }
       }
     },

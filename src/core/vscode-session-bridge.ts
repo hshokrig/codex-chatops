@@ -3,11 +3,12 @@ import { homedir } from "node:os";
 import path from "node:path";
 
 import Database from "better-sqlite3";
-import type { Client } from "discord.js";
+import type { Client, MessageCreateOptions } from "discord.js";
 
 import type { RepoRegistry } from "./repo-registry.js";
 import type { SummaryRenderer } from "./summary-renderer.js";
 import { logger } from "../lib/logger.js";
+import { buildCardMessage } from "../transport/discord/message-cards.js";
 import type { RepoDefinition } from "../types/domain.js";
 
 const POLL_INTERVAL_MS = 20_000;
@@ -17,7 +18,7 @@ const TOOL_CALL_REGEX = /tool_name="([^"]+)"[^]*?call_id="([^"]+)"/g;
 const SUBMISSION_REGEX = /submission\.id="([^"]+)"[^]*?codex\.op="user_input"/g;
 
 type SendableChannel = {
-  send: (content: string) => Promise<unknown>;
+  send: (content: string | MessageCreateOptions) => Promise<unknown>;
 };
 
 interface CodexThreadRow {
@@ -374,13 +375,19 @@ export class VsCodeSessionBridge {
     }
 
     await channel.send(
-      this.deps.summaryRenderer.renderVsCodeSessionStarted({
-        repo,
-        title,
-        workspaceName: workspaceName(thread.cwd),
-        branchName: thread.git_branch,
-        promptCount
-      })
+      buildCardMessage(
+        this.deps.summaryRenderer.renderVsCodeSessionStarted({
+          repo,
+          title,
+          workspaceName: workspaceName(thread.cwd),
+          branchName: thread.git_branch,
+          promptCount
+        }),
+        {
+          tone: "info",
+          footer: "VS Code session"
+        }
+      )
     );
   }
 
@@ -396,17 +403,23 @@ export class VsCodeSessionBridge {
     }
 
     await channel.send(
-      this.deps.summaryRenderer.renderVsCodeSessionActivity({
-        repo,
-        title,
-        workspaceName: workspaceName(thread.cwd),
-        promptCount: stats.promptCount,
-        toolCallCount: stats.toolCallCount,
-        shellCommandCount: stats.shellCommandCount,
-        patchCount: stats.patchCount,
-        tokensUsed: Math.max(thread.tokens_used, 0),
-        lastActivityUnix: Math.floor(thread.updated_at)
-      })
+      buildCardMessage(
+        this.deps.summaryRenderer.renderVsCodeSessionActivity({
+          repo,
+          title,
+          workspaceName: workspaceName(thread.cwd),
+          promptCount: stats.promptCount,
+          toolCallCount: stats.toolCallCount,
+          shellCommandCount: stats.shellCommandCount,
+          patchCount: stats.patchCount,
+          tokensUsed: Math.max(thread.tokens_used, 0),
+          lastActivityUnix: Math.floor(thread.updated_at)
+        }),
+        {
+          tone: "info",
+          footer: "VS Code activity"
+        }
+      )
     );
   }
 

@@ -9,6 +9,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { RepoRegistry } from "../../src/core/repo-registry.js";
 import { SummaryRenderer } from "../../src/core/summary-renderer.js";
 import { VsCodeSessionBridge } from "../../src/core/vscode-session-bridge.js";
+import { payloadText } from "../helpers/discord-payload.js";
 import { createTestDb, createTestRepo } from "../helpers/test-db.js";
 
 const cleanups: Array<() => void> = [];
@@ -149,12 +150,12 @@ describe("VsCodeSessionBridge", () => {
     const codexFixture = createCodexFixture();
     cleanups.push(fixture.cleanup, codexFixture.cleanup);
 
-    const eventMessages: string[] = [];
+    const eventMessages: unknown[] = [];
     const bridge = new VsCodeSessionBridge({
       client: {
         channels: {
           fetch: vi.fn(async () => ({
-            send: vi.fn(async (message: string) => {
+            send: vi.fn(async (message) => {
               eventMessages.push(message);
             })
           }))
@@ -191,12 +192,16 @@ describe("VsCodeSessionBridge", () => {
     await bridge.pollNow(baselineNow + 5_000);
 
     expect(eventMessages).toHaveLength(1);
-    expect(eventMessages[0]).toContain(
+    expect(payloadText(eventMessages[0])).toContain(
       "VS Code Codex session for `codex-chatops`"
     );
-    expect(eventMessages[0]).toContain("Title: Show Codex threads in Discord");
-    expect(eventMessages[0]).toContain("Branch: feature/live-bridge");
-    expect(eventMessages[0]).toContain("Prompts so far: 1");
+    expect(payloadText(eventMessages[0])).toContain(
+      "Title\nShow Codex threads in Discord"
+    );
+    expect(payloadText(eventMessages[0])).toContain("Branch");
+    expect(payloadText(eventMessages[0])).toContain("feature/live-bridge");
+    expect(payloadText(eventMessages[0])).toContain("Prompts so far");
+    expect(payloadText(eventMessages[0])).toContain("1");
 
     bridge.stop();
   });
@@ -211,12 +216,12 @@ describe("VsCodeSessionBridge", () => {
     const codexFixture = createCodexFixture();
     cleanups.push(fixture.cleanup, codexFixture.cleanup);
 
-    const eventMessages: string[] = [];
+    const eventMessages: unknown[] = [];
     const bridge = new VsCodeSessionBridge({
       client: {
         channels: {
           fetch: vi.fn(async () => ({
-            send: vi.fn(async (message: string) => {
+            send: vi.fn(async (message) => {
               eventMessages.push(message);
             })
           }))
@@ -263,16 +268,19 @@ describe("VsCodeSessionBridge", () => {
     await bridge.pollNow(initialNow + 70_000);
 
     expect(eventMessages).toHaveLength(1);
-    expect(eventMessages[0]).toContain(
+    expect(payloadText(eventMessages[0])).toContain(
       "VS Code Codex activity for `codex-chatops`"
     );
-    expect(eventMessages[0]).toContain("Title: Discord bridge");
-    expect(eventMessages[0]).toContain("Prompts in session: 2");
-    expect(eventMessages[0]).toContain("Tool calls observed: 3");
-    expect(eventMessages[0]).toContain("Shell commands: 1");
-    expect(eventMessages[0]).toContain("Patches: 1");
-    expect(eventMessages[0]).toContain("Tokens recorded: 4321");
-    expect(eventMessages[0]).toContain("Last activity: <t:");
+    expect(payloadText(eventMessages[0])).toContain("Title\nDiscord bridge");
+    expect(payloadText(eventMessages[0])).toContain("Prompts in session");
+    expect(payloadText(eventMessages[0])).toContain("2");
+    expect(payloadText(eventMessages[0])).toContain("Tool calls observed");
+    expect(payloadText(eventMessages[0])).toContain("3");
+    expect(payloadText(eventMessages[0])).toContain("Shell commands");
+    expect(payloadText(eventMessages[0])).toContain("Patches");
+    expect(payloadText(eventMessages[0])).toContain("Tokens recorded");
+    expect(payloadText(eventMessages[0])).toContain("4321");
+    expect(payloadText(eventMessages[0])).toContain("Last activity");
 
     bridge.stop();
   });
@@ -287,12 +295,12 @@ describe("VsCodeSessionBridge", () => {
     const codexFixture = createCodexFixture();
     cleanups.push(fixture.cleanup, codexFixture.cleanup);
 
-    const eventMessages: string[] = [];
+    const eventMessages: unknown[] = [];
     const bridge = new VsCodeSessionBridge({
       client: {
         channels: {
           fetch: vi.fn(async () => ({
-            send: vi.fn(async (message: string) => {
+            send: vi.fn(async (message) => {
               eventMessages.push(message);
             })
           }))

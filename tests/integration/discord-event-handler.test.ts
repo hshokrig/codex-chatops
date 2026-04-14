@@ -7,6 +7,7 @@ import { SessionManager } from "../../src/core/session-manager.js";
 import { SummaryRenderer } from "../../src/core/summary-renderer.js";
 import { DiscordEventHandler } from "../../src/transport/discord/event-handler.js";
 import { RunAuthorizationService } from "../../src/transport/discord/run-authorization.js";
+import { payloadText } from "../helpers/discord-payload.js";
 import { createTestDb, createTestRepo } from "../helpers/test-db.js";
 
 const cleanups: Array<() => void> = [];
@@ -131,15 +132,27 @@ describe("DiscordEventHandler", () => {
 
     expect(threadMessages).toHaveLength(2);
     expect(eventMessages).toHaveLength(2);
-    expect(eventMessages[0]).toContain("New Codex session for `mint`");
-    expect(eventMessages[0]).toContain("Thread: <#thread-1>");
-    expect(eventMessages[0]).toContain("Title: fix the flaky login tests");
-    expect(eventMessages[1]).toContain("Codex activity for `mint`");
-    expect(eventMessages[1]).toContain("Runs in session: 1");
-    expect(eventMessages[1]).toContain("Changed files: 1");
-    expect(eventMessages[1]).not.toContain("Fixed flaky test");
+    expect(payloadText(eventMessages[0])).toContain(
+      "New Codex session for `mint`"
+    );
+    expect(payloadText(eventMessages[0])).toContain("Thread");
+    expect(payloadText(eventMessages[0])).toContain("<#thread-1>");
+    expect(payloadText(eventMessages[0])).toContain("Title");
+    expect(payloadText(eventMessages[0])).toContain(
+      "fix the flaky login tests"
+    );
+    expect(payloadText(eventMessages[1])).toContain(
+      "Codex activity for `mint`"
+    );
+    expect(payloadText(eventMessages[1])).toContain("Runs in session");
+    expect(payloadText(eventMessages[1])).toContain("1");
+    expect(payloadText(eventMessages[1])).toContain("Changed files");
+    expect(payloadText(eventMessages[1])).toContain("1");
+    expect(payloadText(eventMessages[1])).not.toContain("Fixed flaky test");
     expect(auditMessages).toHaveLength(1);
-    expect(auditMessages[0]).toContain("fix the flaky login tests");
+    expect(payloadText(auditMessages[0])).toContain(
+      "fix the flaky login tests"
+    );
     expect(fixture.db.getSessionByThreadId("thread-1")).not.toBeNull();
   });
 

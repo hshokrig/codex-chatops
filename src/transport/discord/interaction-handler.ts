@@ -6,6 +6,7 @@ import {
   type ChatInputCommandInteraction,
   type Client,
   type Interaction,
+  type MessageCreateOptions,
   type ModalSubmitInteraction
 } from "discord.js";
 
@@ -21,6 +22,7 @@ import {
   safeInteractionReply
 } from "./components.js";
 import type { DiscordEventHandler } from "./event-handler.js";
+import { buildCardMessage, buildCardReply } from "./message-cards.js";
 import type { RunAuthorizationService } from "./run-authorization.js";
 import type { ApprovalService } from "../../core/approvals.js";
 import type { DeployRunner } from "../../core/deploy-runner.js";
@@ -38,9 +40,7 @@ import type {
 } from "../../types/domain.js";
 
 type SendableChannel = {
-  send: (
-    payload: string | { content: string; components?: unknown[] }
-  ) => Promise<unknown>;
+  send: (payload: string | MessageCreateOptions) => Promise<unknown>;
 };
 type RepoInteraction =
   | ButtonInteraction
@@ -183,15 +183,21 @@ export class DiscordInteractionHandler {
         );
         const pending = this.deps.db.listPendingApprovals(session.id);
         await interaction.reply({
-          content: this.deps.summaryRenderer.renderStatus(
-            repo,
-            session,
-            latestRun,
-            changedFiles,
-            dirty,
-            pending
-          ),
-          ephemeral: true
+          ...buildCardReply(
+            this.deps.summaryRenderer.renderStatus(
+              repo,
+              session,
+              latestRun,
+              changedFiles,
+              dirty,
+              pending
+            ),
+            {
+              tone: latestRun?.status === "failed" ? "danger" : "info",
+              footer: repo.slug,
+              ephemeral: true
+            }
+          )
         });
         break;
       }
@@ -547,13 +553,20 @@ export class DiscordInteractionHandler {
     );
     const pending = this.deps.db.listPendingApprovals(session.id);
     await safeInteractionReply(interaction, {
-      content: this.deps.summaryRenderer.renderStatus(
-        repo,
-        session,
-        latestRun,
-        changedFiles,
-        dirty,
-        pending
+      ...buildCardReply(
+        this.deps.summaryRenderer.renderStatus(
+          repo,
+          session,
+          latestRun,
+          changedFiles,
+          dirty,
+          pending
+        ),
+        {
+          tone: latestRun?.status === "failed" ? "danger" : "info",
+          footer: repo.slug,
+          ephemeral: true
+        }
       ),
       ephemeral: true
     });
@@ -614,7 +627,13 @@ export class DiscordInteractionHandler {
     );
     if (isSendableChannel(approvalsChannel)) {
       await approvalsChannel.send(
-        `Pending approval ${approval.type} for ${session.title} (<#${session.threadId}>)`
+        buildCardMessage(
+          `Pending approval ${approval.type}\nTitle: ${session.title}\nThread: <#${session.threadId}>`,
+          {
+            tone: "warning",
+            footer: "codex-approvals"
+          }
+        )
       );
     }
 
@@ -726,7 +745,13 @@ export class DiscordInteractionHandler {
     );
     if (isSendableChannel(eventsChannel)) {
       await eventsChannel.send(
-        `${approval.type} approved for ${repo.slug}: ${resultMessage}`
+        buildCardMessage(
+          `${approval.type} approved for ${repo.slug}\n${resultMessage}`,
+          {
+            tone: "success",
+            footer: "Approval execution"
+          }
+        )
       );
     }
 
@@ -736,7 +761,12 @@ export class DiscordInteractionHandler {
         ? await fetchTextChannel(this.deps.client, repo.deploymentsChannelId)
         : null;
     if (deploymentsChannel && isSendableChannel(deploymentsChannel)) {
-      await deploymentsChannel.send(resultMessage);
+      await deploymentsChannel.send(
+        buildCardMessage(resultMessage, {
+          tone: "info",
+          footer: repo.slug
+        })
+      );
     }
 
     return resultMessage;
