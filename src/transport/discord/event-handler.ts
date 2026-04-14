@@ -325,7 +325,7 @@ export class DiscordEventHandler {
           : ` with ${attachments.length} attachment${attachments.length === 1 ? "" : "s"}`;
       await sendText(
         thread,
-        `Starting Codex run for \`${repo.slug}\` on \`${session.branchName}\`${attachmentSummary}.`
+        `Starting Codex run for \`${repo.slug}\` in this session${attachmentSummary}.`
       );
       progressTimer = setTimeout(() => {
         void sendText(

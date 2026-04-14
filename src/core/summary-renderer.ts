@@ -67,6 +67,22 @@ function summarizeTitle(title: string, fallback: string): string {
   return `${normalized.slice(0, 93).trimEnd()}...`;
 }
 
+function operatorBranchLabel(
+  repo: RepoDefinition,
+  branchName: string | null | undefined
+): string {
+  const normalized = branchName?.replace(/\s+/g, " ").trim() ?? "";
+  if (!normalized) {
+    return repo.defaultBranch;
+  }
+
+  if (normalized.startsWith(`chatops/${repo.slug}/`)) {
+    return "session branch";
+  }
+
+  return normalized;
+}
+
 export class SummaryRenderer {
   renderRunSummary(input: RunSummaryInput): string {
     const checksSummary =
@@ -88,8 +104,9 @@ export class SummaryRenderer {
 
     return [
       `Run ${input.run.status.toUpperCase()} for \`${input.repo.slug}\``,
-      `Session: \`${input.session.id}\``,
-      `Branch: \`${input.session.branchName}\``,
+      `Title: ${sessionTitle(input.session, input.repo)}`,
+      `Thread: ${threadMention(input.session)}`,
+      `Branch: ${operatorBranchLabel(input.repo, input.session.branchName)}`,
       `Changed files (${input.changedFiles.length}): ${input.changedFiles.join(", ") || "none"}`,
       `Checks:\n${checksSummary}`,
       `Uncommitted changes: ${input.hasUncommittedChanges ? "yes" : "no"}`,
@@ -103,8 +120,7 @@ export class SummaryRenderer {
     return [
       `New Codex session for \`${repo.slug}\``,
       `Thread: ${threadMention(session)}`,
-      `Title: ${sessionTitle(session, repo)}`,
-      `Session: \`${session.id}\``
+      `Title: ${sessionTitle(session, repo)}`
     ].join("\n");
   }
 
@@ -125,7 +141,7 @@ export class SummaryRenderer {
       `VS Code Codex session for \`${input.repo.slug}\``,
       `Title: ${summarizeTitle(input.title, `${input.repo.slug} session`)}`,
       `Workspace: ${input.workspaceName}`,
-      `Branch: ${input.branchName?.trim() || input.repo.defaultBranch}`,
+      `Branch: ${operatorBranchLabel(input.repo, input.branchName)}`,
       `Prompts so far: ${input.promptCount}`
     ].join("\n");
   }
@@ -168,11 +184,10 @@ export class SummaryRenderer {
     pendingApprovals: ApprovalRecord[]
   ): string {
     return [
-      `Session ${session.id}`,
+      `Status for ${sessionTitle(session, repo)}`,
       `Repo: ${repo.slug}`,
-      `Title: ${sessionTitle(session, repo)}`,
       `Thread: ${threadMention(session)}`,
-      `Branch: ${session.branchName}`,
+      `Branch: ${operatorBranchLabel(repo, session.branchName)}`,
       `State: ${session.status}`,
       `Latest run: ${latestRun?.status ?? "none"}`,
       `Changed files: ${changedFiles.length}`,

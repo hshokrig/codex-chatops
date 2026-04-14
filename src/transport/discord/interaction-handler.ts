@@ -614,7 +614,7 @@ export class DiscordInteractionHandler {
     );
     if (isSendableChannel(approvalsChannel)) {
       await approvalsChannel.send(
-        `Pending approval ${approval.type} for session ${session.id}`
+        `Pending approval ${approval.type} for ${session.title} (<#${session.threadId}>)`
       );
     }
 

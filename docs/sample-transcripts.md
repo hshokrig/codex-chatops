@@ -9,8 +9,9 @@ Bot creates thread:
 
 Bot summary:
 `Run SUCCEEDED for mint
-Session: <session-id>
-Branch: chatops/mint/<session-id>
+Title: fix the flaky login tests and tighten retry handling
+Thread: <#discord-thread>
+Branch: session branch
 Changed files (2): src/auth/retry.ts, tests/login.spec.ts
 Checks:
 PASS pnpm test

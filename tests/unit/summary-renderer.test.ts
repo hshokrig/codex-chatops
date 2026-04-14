@@ -49,7 +49,7 @@ describe("SummaryRenderer", () => {
     expect(message).toContain("New Codex session for `mint`");
     expect(message).toContain("Thread: <#thread-1>");
     expect(message).toContain("Title: Investigate flaky login tests");
-    expect(message).toContain("Session: `session-1`");
+    expect(message).not.toContain("session-1");
   });
 
   it("renders repo activity without copying the full run summary", () => {
@@ -73,5 +73,49 @@ describe("SummaryRenderer", () => {
     expect(message).toContain("Runs in session: 3");
     expect(message).toContain("Changed files: 2");
     expect(message).toContain("Dirty worktree: yes");
+  });
+
+  it("renders run summaries without raw session ids or generated branch ids", () => {
+    const renderer = new SummaryRenderer();
+    const repo = createTestRepo();
+    const session = createSession();
+
+    const message = renderer.renderRunSummary({
+      repo,
+      session,
+      run: createRun("succeeded"),
+      checks: [],
+      changedFiles: ["src/app.ts"],
+      summary: "Adjusted the retry flow.",
+      hasUncommittedChanges: true,
+      pendingApprovals: []
+    });
+
+    expect(message).toContain("Title: Investigate flaky login tests");
+    expect(message).toContain("Thread: <#thread-1>");
+    expect(message).toContain("Branch: session branch");
+    expect(message).not.toContain("Session: `session-1`");
+    expect(message).not.toContain("chatops/mint/session-1");
+  });
+
+  it("renders status with a human title and friendly branch label", () => {
+    const renderer = new SummaryRenderer();
+    const repo = createTestRepo();
+    const session = createSession();
+
+    const message = renderer.renderStatus(
+      repo,
+      session,
+      createRun("succeeded"),
+      ["src/app.ts"],
+      true,
+      []
+    );
+
+    expect(message).toContain("Status for Investigate flaky login tests");
+    expect(message).toContain("Thread: <#thread-1>");
+    expect(message).toContain("Branch: session branch");
+    expect(message).not.toContain("Session session-1");
+    expect(message).not.toContain("chatops/mint/session-1");
   });
 });
