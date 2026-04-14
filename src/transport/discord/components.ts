@@ -2,6 +2,9 @@ import {
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
+  ModalBuilder,
+  TextInputBuilder,
+  TextInputStyle,
   type ButtonInteraction,
   type MessageCreateOptions
 } from "discord.js";
@@ -21,7 +24,13 @@ export type PrimaryAction =
   | "reject"
   | "confirm-prod";
 
-export function componentId(action: PrimaryAction, sessionId: string, extra?: string): string {
+export const PASSWORD_FIELD_ID = "operator-password";
+
+export function componentId(
+  action: PrimaryAction,
+  sessionId: string,
+  extra?: string
+): string {
   return ["codex", action, sessionId, extra].filter(Boolean).join(":");
 }
 
@@ -43,13 +52,27 @@ export function parseComponentId(customId: string): {
   };
 }
 
-export function buildSessionActionRows(sessionId: string): ActionRowBuilder<ButtonBuilder>[] {
+export function buildSessionActionRows(
+  sessionId: string
+): ActionRowBuilder<ButtonBuilder>[] {
   return [
     new ActionRowBuilder<ButtonBuilder>().addComponents(
-      new ButtonBuilder().setCustomId(componentId("status", sessionId)).setLabel("Status").setStyle(ButtonStyle.Secondary),
-      new ButtonBuilder().setCustomId(componentId("diff", sessionId)).setLabel("Diff").setStyle(ButtonStyle.Secondary),
-      new ButtonBuilder().setCustomId(componentId("commit", sessionId)).setLabel("Commit").setStyle(ButtonStyle.Primary),
-      new ButtonBuilder().setCustomId(componentId("pr", sessionId)).setLabel("Open PR").setStyle(ButtonStyle.Primary),
+      new ButtonBuilder()
+        .setCustomId(componentId("status", sessionId))
+        .setLabel("Status")
+        .setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder()
+        .setCustomId(componentId("diff", sessionId))
+        .setLabel("Diff")
+        .setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder()
+        .setCustomId(componentId("commit", sessionId))
+        .setLabel("Commit")
+        .setStyle(ButtonStyle.Primary),
+      new ButtonBuilder()
+        .setCustomId(componentId("pr", sessionId))
+        .setLabel("Open PR")
+        .setStyle(ButtonStyle.Primary),
       new ButtonBuilder()
         .setCustomId(componentId("deploy-staging", sessionId))
         .setLabel("Deploy Staging")
@@ -60,10 +83,22 @@ export function buildSessionActionRows(sessionId: string): ActionRowBuilder<Butt
         .setCustomId(componentId("deploy-prod", sessionId))
         .setLabel("Deploy Prod")
         .setStyle(ButtonStyle.Danger),
-      new ButtonBuilder().setCustomId(componentId("cancel", sessionId)).setLabel("Cancel Run").setStyle(ButtonStyle.Secondary),
-      new ButtonBuilder().setCustomId(componentId("reset", sessionId)).setLabel("Reset Session").setStyle(ButtonStyle.Secondary),
-      new ButtonBuilder().setCustomId(componentId("archive", sessionId)).setLabel("Archive Session").setStyle(ButtonStyle.Secondary),
-      new ButtonBuilder().setCustomId(componentId("new", sessionId)).setLabel("New Session").setStyle(ButtonStyle.Secondary)
+      new ButtonBuilder()
+        .setCustomId(componentId("cancel", sessionId))
+        .setLabel("Cancel Run")
+        .setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder()
+        .setCustomId(componentId("reset", sessionId))
+        .setLabel("Reset Session")
+        .setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder()
+        .setCustomId(componentId("archive", sessionId))
+        .setLabel("Archive Session")
+        .setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder()
+        .setCustomId(componentId("new", sessionId))
+        .setLabel("New Session")
+        .setStyle(ButtonStyle.Secondary)
     )
   ];
 }
@@ -84,7 +119,9 @@ export function buildApprovalRow(
   );
 }
 
-export function buildProdConfirmationRow(sessionId: string): ActionRowBuilder<ButtonBuilder> {
+export function buildProdConfirmationRow(
+  sessionId: string
+): ActionRowBuilder<ButtonBuilder> {
   return new ActionRowBuilder<ButtonBuilder>().addComponents(
     new ButtonBuilder()
       .setCustomId(componentId("confirm-prod", sessionId))
@@ -93,7 +130,91 @@ export function buildProdConfirmationRow(sessionId: string): ActionRowBuilder<Bu
   );
 }
 
-export function followupMessage(content: string, sessionId: string): MessageCreateOptions {
+export function buildRunAuthorizationRow(
+  authorizationId: string
+): ActionRowBuilder<ButtonBuilder> {
+  return new ActionRowBuilder<ButtonBuilder>().addComponents(
+    new ButtonBuilder()
+      .setCustomId(["codex-auth", "authorize-run", authorizationId].join(":"))
+      .setLabel("Authorize Run")
+      .setStyle(ButtonStyle.Primary)
+  );
+}
+
+export function parseAuthorizationComponentId(customId: string): {
+  namespace: string;
+  action: "authorize-run";
+  authorizationId: string;
+} | null {
+  const [namespace, action, authorizationId] = customId.split(":");
+  if (
+    namespace !== "codex-auth" ||
+    action !== "authorize-run" ||
+    !authorizationId
+  ) {
+    return null;
+  }
+  return {
+    namespace,
+    action,
+    authorizationId
+  };
+}
+
+export function buildPasswordModal(
+  customId: string,
+  title = "Authorize Command"
+): ModalBuilder {
+  return new ModalBuilder()
+    .setCustomId(customId)
+    .setTitle(title)
+    .addComponents(
+      new ActionRowBuilder<TextInputBuilder>().addComponents(
+        new TextInputBuilder()
+          .setCustomId(PASSWORD_FIELD_ID)
+          .setLabel("Password")
+          .setRequired(true)
+          .setStyle(TextInputStyle.Short)
+      )
+    );
+}
+
+export function passwordModalId(
+  action: "prompt" | "approve",
+  primaryId: string,
+  secondaryId?: string
+): string {
+  return ["codex-modal", action, primaryId, secondaryId]
+    .filter(Boolean)
+    .join(":");
+}
+
+export function parsePasswordModalId(customId: string): {
+  namespace: string;
+  action: "prompt" | "approve";
+  primaryId: string;
+  secondaryId?: string;
+} | null {
+  const [namespace, action, primaryId, secondaryId] = customId.split(":");
+  if (
+    namespace !== "codex-modal" ||
+    !primaryId ||
+    (action !== "prompt" && action !== "approve")
+  ) {
+    return null;
+  }
+  return {
+    namespace,
+    action,
+    primaryId,
+    secondaryId
+  };
+}
+
+export function followupMessage(
+  content: string,
+  sessionId: string
+): MessageCreateOptions {
   return {
     content,
     components: buildSessionActionRows(sessionId)

@@ -3,6 +3,7 @@
 Discord-first private ChatOps bridge for Codex running on a trusted local machine. Discord is the operator interface, Codex is the execution engine, and each Discord session thread maps to one persistent Codex thread, one worktree, and one branch.
 
 ## Architecture
+
 - `transport/discord`: message intake, thread creation, buttons, slash commands
 - `core`: session routing, worktree management, Codex execution, approvals, PRs, deploys, summaries, usage metrics
 - `persistence`: SQLite bootstrap and event/session storage
@@ -10,6 +11,7 @@ Discord-first private ChatOps bridge for Codex running on a trusted local machin
 - `.chatops/`: artifacts, worktrees, and usage snapshots
 
 ## Discord Server Layout
+
 - `00-control`
   - `#codex-status`
   - `#codex-approvals`
@@ -28,9 +30,10 @@ Discord-first private ChatOps bridge for Codex running on a trusted local machin
   - `#codex-events`
   - `#codex-deployments`
 
-Use each repo category's `#codex-sessions` channel for top-level prompts. Each session becomes a Discord thread inside that channel.
+Use each repo category's `#codex-sessions` channel for top-level prompts. Each session becomes a Discord thread inside that channel. The paired `#codex-events` channel is a lightweight activity feed for managed sessions and does not mirror full thread content.
 
 ## Setup
+
 1. Create a Discord application and bot in the Discord Developer Portal.
 2. Invite the bot to your private guild with permissions for:
    - viewing channels
@@ -53,12 +56,17 @@ Use each repo category's `#codex-sessions` channel for top-level prompts. Each s
    - or `pnpm start` after `pnpm build`
 
 ## Auth
+
 - Supported operational mode: Codex local authenticated with ChatGPT sign-in.
 - Do not store a Discord user email/password in this repo.
 - Do not copy `~/.codex/auth.json` into `.secrets/`, the repo, or `.chatops/`.
+- `allowed_users` in `.secrets/repo-map.yaml` remains the Discord account allowlist for each repo.
+- If `DISCORD_OPERATOR_PASSWORD` is set, prompt-triggered runs and approval execution require a password modal before they execute.
+- Discord bots cannot inspect phone IMEI or device identifiers; this project can bind to Discord user identity, not to a specific handset.
 - GitHub API access is optional but required for PR/deploy actions unless `gh` CLI mode is used.
 
 ## Operator Workflow
+
 1. Send a task message in a repo category's `#codex-sessions` channel.
 2. The bot opens a thread, creates a session, and runs Codex in a repo-specific worktree.
 3. Send normal messages inside the same thread to continue the same Codex thread and branch.
@@ -74,6 +82,7 @@ Use each repo category's `#codex-sessions` channel for top-level prompts. Each s
    - archive
 
 ## Commands
+
 - `pnpm dev`: run the service in watch mode
 - `pnpm build`: compile TypeScript
 - `pnpm test`: run unit and integration tests
@@ -81,6 +90,7 @@ Use each repo category's `#codex-sessions` channel for top-level prompts. Each s
 - `pnpm bootstrap:discord`: validate or create the Discord structure and register commands
 
 ## Health and Admin
+
 - `GET /healthz`
 - `GET /readyz`
 - `GET /admin/sessions/:id`
@@ -88,6 +98,7 @@ Use each repo category's `#codex-sessions` channel for top-level prompts. Each s
 - `POST /admin/usage-rollups`
 
 ## Files and Artifacts
+
 - `.chatops/sessions/<session-id>/session.json`
 - `.chatops/sessions/<session-id>/session.md`
 - `.chatops/sessions/<session-id>/runs/<run-id>/request.md`
@@ -98,12 +109,14 @@ Use each repo category's `#codex-sessions` channel for top-level prompts. Each s
 - `.chatops/usage/*.json`
 
 ## Deployment Setup
+
 - Configure allowlisted workflows in `.secrets/repo-map.yaml`.
 - Staging deploys require explicit approval.
 - Production deploys require second confirmation plus approval.
 - Example workflow files are in [docs/examples/deploy-staging.yml](docs/examples/deploy-staging.yml) and [docs/examples/deploy-production.yml](docs/examples/deploy-production.yml).
 
 ## Troubleshooting
+
 - `pnpm smoke:local` fails on Codex auth:
   - run `codex login status`
   - re-auth with `codex login`
@@ -118,5 +131,6 @@ Use each repo category's `#codex-sessions` channel for top-level prompts. Each s
   - run `pnpm rebuild better-sqlite3 esbuild`
 
 ## Additional Docs
+
 - [Operator Runbook](docs/operator-runbook.md)
 - [Sample Transcripts](docs/sample-transcripts.md)

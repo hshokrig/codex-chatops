@@ -6,14 +6,22 @@ import {
   type ChatInputCommandInteraction,
   type Client,
   type Interaction,
+  type ModalSubmitInteraction
 } from "discord.js";
 
 import {
+  PASSWORD_FIELD_ID,
   buildApprovalRow,
+  buildPasswordModal,
   buildProdConfirmationRow,
+  parseAuthorizationComponentId,
   parseComponentId,
+  parsePasswordModalId,
+  passwordModalId,
   safeInteractionReply
 } from "./components.js";
+import type { DiscordEventHandler } from "./event-handler.js";
+import type { RunAuthorizationService } from "./run-authorization.js";
 import type { ApprovalService } from "../../core/approvals.js";
 import type { DeployRunner } from "../../core/deploy-runner.js";
 import type { GitRunner } from "../../core/git-runner.js";
@@ -23,12 +31,51 @@ import type { SessionManager } from "../../core/session-manager.js";
 import type { SummaryRenderer } from "../../core/summary-renderer.js";
 import type { DatabaseClient } from "../../persistence/db.js";
 import { logger } from "../../lib/logger.js";
-import type { EnvironmentConfig, RepoDefinition, SessionRecord } from "../../types/domain.js";
+import type {
+  EnvironmentConfig,
+  RepoDefinition,
+  SessionRecord
+} from "../../types/domain.js";
 
-type SendableChannel = { send: (payload: string | { content: string; components?: unknown[] }) => Promise<unknown> };
+type SendableChannel = {
+  send: (
+    payload: string | { content: string; components?: unknown[] }
+  ) => Promise<unknown>;
+};
+type RepoInteraction =
+  | ButtonInteraction
+  | ChatInputCommandInteraction
+  | ModalSubmitInteraction;
 
 function isSendableChannel(channel: unknown): channel is SendableChannel {
-  return Boolean(channel) && typeof (channel as { send?: unknown }).send === "function";
+  return (
+    Boolean(channel) &&
+    typeof (channel as { send?: unknown }).send === "function"
+  );
+}
+
+function extractRoleIds(member: unknown): string[] {
+  if (!member || typeof member !== "object") {
+    return [];
+  }
+
+  const roles = (member as { roles?: unknown }).roles;
+  if (Array.isArray(roles)) {
+    return roles.map(String);
+  }
+
+  if (roles && typeof roles === "object" && "cache" in roles) {
+    const cache = (roles as { cache?: Map<string, unknown> }).cache;
+    if (cache instanceof Map) {
+      return [...cache.keys()];
+    }
+  }
+
+  return [];
+}
+
+function unauthorizedCommandMessage(): string {
+  return "You are not authorized to run this command.";
 }
 
 async function fetchTextChannel(client: Client, channelId?: string | null) {
@@ -50,6 +97,8 @@ export interface InteractionHandlerDependencies {
   deployRunner: DeployRunner;
   summaryRenderer: SummaryRenderer;
   activeRuns: Map<string, AbortController>;
+  eventHandler: DiscordEventHandler;
+  runAuthorization: RunAuthorizationService;
 }
 
 export const slashCommands = [
@@ -82,32 +131,66 @@ export class DiscordInteractionHandler {
       return;
     }
 
+    if (interaction.isModalSubmit()) {
+      await this.handleModalSubmit(interaction);
+      return;
+    }
+
     if (interaction.isChatInputCommand()) {
       await this.handleSlashCommand(interaction);
     }
   }
 
-  private async handleSlashCommand(interaction: ChatInputCommandInteraction): Promise<void> {
-    const session = this.deps.sessionManager.getByThreadId(interaction.channelId);
+  private async handleSlashCommand(
+    interaction: ChatInputCommandInteraction
+  ): Promise<void> {
+    const session = this.deps.sessionManager.getByThreadId(
+      interaction.channelId
+    );
     if (!session) {
-      await interaction.reply({ content: "This command only works inside a session thread.", ephemeral: true });
+      await interaction.reply({
+        content: "This command only works inside a session thread.",
+        ephemeral: true
+      });
       return;
     }
 
     const repo = this.deps.repoRegistry.resolveRepoById(session.repoId);
     if (!repo) {
-      await interaction.reply({ content: "Repo mapping not found for this session.", ephemeral: true });
+      await interaction.reply({
+        content: "Repo mapping not found for this session.",
+        ephemeral: true
+      });
+      return;
+    }
+
+    if (!this.isRepoAuthorized(repo, interaction)) {
+      await interaction.reply({
+        content: unauthorizedCommandMessage(),
+        ephemeral: true
+      });
       return;
     }
 
     switch (interaction.commandName) {
       case "codex-status": {
         const latestRun = this.deps.db.getLatestRunForSession(session.id);
-        const changedFiles = await this.deps.gitRunner.listChangedFiles(session.worktreePath);
-        const dirty = await this.deps.gitRunner.hasUncommittedChanges(session.worktreePath);
+        const changedFiles = await this.deps.gitRunner.listChangedFiles(
+          session.worktreePath
+        );
+        const dirty = await this.deps.gitRunner.hasUncommittedChanges(
+          session.worktreePath
+        );
         const pending = this.deps.db.listPendingApprovals(session.id);
         await interaction.reply({
-          content: this.deps.summaryRenderer.renderStatus(repo, session, latestRun, changedFiles, dirty, pending),
+          content: this.deps.summaryRenderer.renderStatus(
+            repo,
+            session,
+            latestRun,
+            changedFiles,
+            dirty,
+            pending
+          ),
           ephemeral: true
         });
         break;
@@ -121,7 +204,11 @@ export class DiscordInteractionHandler {
           kind: "session.reset",
           payloadJson: JSON.stringify({ by: interaction.user.id })
         });
-        await interaction.reply({ content: "Session reset. The next prompt will start a fresh Codex thread.", ephemeral: true });
+        await interaction.reply({
+          content:
+            "Session reset. The next prompt will start a fresh Codex thread.",
+          ephemeral: true
+        });
         break;
       case "codex-new":
         await interaction.reply({
@@ -130,11 +217,23 @@ export class DiscordInteractionHandler {
         });
         break;
       default:
-        await interaction.reply({ content: "Unknown command.", ephemeral: true });
+        await interaction.reply({
+          content: "Unknown command.",
+          ephemeral: true
+        });
     }
   }
 
   private async handleButton(interaction: ButtonInteraction): Promise<void> {
+    const authorization = parseAuthorizationComponentId(interaction.customId);
+    if (authorization) {
+      await this.handlePromptAuthorizationButton(
+        interaction,
+        authorization.authorizationId
+      );
+      return;
+    }
+
     const parsed = parseComponentId(interaction.customId);
     if (!parsed) {
       return;
@@ -153,6 +252,14 @@ export class DiscordInteractionHandler {
     if (!repo) {
       await safeInteractionReply(interaction, {
         content: "Repo mapping missing for this session.",
+        ephemeral: true
+      });
+      return;
+    }
+
+    if (!this.isRepoAuthorized(repo, interaction)) {
+      await safeInteractionReply(interaction, {
+        content: unauthorizedCommandMessage(),
         ephemeral: true
       });
       return;
@@ -177,28 +284,44 @@ export class DiscordInteractionHandler {
           });
           break;
         case "deploy-staging":
-          await this.handleApprovalRequest(interaction, session, "deploy-staging", {
-            environment: "staging"
-          });
+          await this.handleApprovalRequest(
+            interaction,
+            session,
+            "deploy-staging",
+            {
+              environment: "staging"
+            }
+          );
           break;
         case "deploy-prod":
           if (repo.requireProdConfirmation) {
             await safeInteractionReply(interaction, {
-              content: "Production deploy needs a second confirmation before approval is requested.",
+              content:
+                "Production deploy needs a second confirmation before approval is requested.",
               ephemeral: true,
               components: [buildProdConfirmationRow(session.id)]
             });
           } else {
-            await this.handleApprovalRequest(interaction, session, "deploy-production", {
-              environment: "production"
-            });
+            await this.handleApprovalRequest(
+              interaction,
+              session,
+              "deploy-production",
+              {
+                environment: "production"
+              }
+            );
           }
           break;
         case "confirm-prod":
-          await this.handleApprovalRequest(interaction, session, "deploy-production", {
-            environment: "production",
-            confirmedBy: interaction.user.id
-          });
+          await this.handleApprovalRequest(
+            interaction,
+            session,
+            "deploy-production",
+            {
+              environment: "production",
+              confirmedBy: interaction.user.id
+            }
+          );
           break;
         case "approve":
           await this.handleApprove(interaction, repo, session, parsed.extra);
@@ -212,7 +335,8 @@ export class DiscordInteractionHandler {
         case "reset":
           this.deps.sessionManager.resetSession(session.id);
           await safeInteractionReply(interaction, {
-            content: "Session reset. The next prompt will start a fresh Codex thread.",
+            content:
+              "Session reset. The next prompt will start a fresh Codex thread.",
             ephemeral: true
           });
           break;
@@ -239,12 +363,174 @@ export class DiscordInteractionHandler {
           });
       }
     } catch (error) {
-      logger.error({ err: error, customId: interaction.customId }, "Interaction failed");
+      logger.error(
+        { err: error, customId: interaction.customId },
+        "Interaction failed"
+      );
       await safeInteractionReply(interaction, {
         content: `Action failed: ${error instanceof Error ? error.message : String(error)}`,
         ephemeral: true
       });
     }
+  }
+
+  private async handleModalSubmit(
+    interaction: ModalSubmitInteraction
+  ): Promise<void> {
+    const parsed = parsePasswordModalId(interaction.customId);
+    if (!parsed) {
+      return;
+    }
+
+    const password = interaction.fields.getTextInputValue(PASSWORD_FIELD_ID);
+    if (!this.deps.runAuthorization.verifyPassword(password)) {
+      await interaction.reply({
+        content: unauthorizedCommandMessage(),
+        ephemeral: true
+      });
+      return;
+    }
+
+    try {
+      switch (parsed.action) {
+        case "prompt":
+          await this.handlePromptPasswordModal(interaction, parsed.primaryId);
+          break;
+        case "approve":
+          await this.handleApprovePasswordModal(
+            interaction,
+            parsed.primaryId,
+            parsed.secondaryId
+          );
+          break;
+      }
+    } catch (error) {
+      logger.error(
+        { err: error, customId: interaction.customId },
+        "Modal interaction failed"
+      );
+      if (interaction.deferred || interaction.replied) {
+        await interaction.followUp({
+          content: `Action failed: ${error instanceof Error ? error.message : String(error)}`,
+          ephemeral: true
+        });
+      } else {
+        await interaction.reply({
+          content: `Action failed: ${error instanceof Error ? error.message : String(error)}`,
+          ephemeral: true
+        });
+      }
+    }
+  }
+
+  private async handlePromptAuthorizationButton(
+    interaction: ButtonInteraction,
+    authorizationId: string
+  ): Promise<void> {
+    const pending =
+      this.deps.runAuthorization.getPromptAuthorization(authorizationId);
+    if (!pending) {
+      await safeInteractionReply(interaction, {
+        content:
+          "This run authorization has expired. Resend the prompt to try again.",
+        ephemeral: true
+      });
+      return;
+    }
+
+    if (pending.requestedBy !== interaction.user.id) {
+      await safeInteractionReply(interaction, {
+        content: unauthorizedCommandMessage(),
+        ephemeral: true
+      });
+      return;
+    }
+
+    await interaction.showModal(
+      buildPasswordModal(
+        passwordModalId("prompt", authorizationId),
+        "Authorize Run"
+      )
+    );
+  }
+
+  private async handlePromptPasswordModal(
+    interaction: ModalSubmitInteraction,
+    authorizationId: string
+  ): Promise<void> {
+    const pending =
+      this.deps.runAuthorization.consumePromptAuthorization(authorizationId);
+    if (!pending) {
+      await interaction.reply({
+        content:
+          "This run authorization has expired. Resend the prompt to try again.",
+        ephemeral: true
+      });
+      return;
+    }
+
+    if (pending.requestedBy !== interaction.user.id) {
+      await interaction.reply({
+        content: unauthorizedCommandMessage(),
+        ephemeral: true
+      });
+      return;
+    }
+
+    await interaction.reply({
+      content: "Authorization accepted. Starting the run.",
+      ephemeral: true
+    });
+    await this.deps.eventHandler.executeAuthorizedPrompt(pending);
+  }
+
+  private async handleApprovePasswordModal(
+    interaction: ModalSubmitInteraction,
+    sessionId: string,
+    approvalId?: string
+  ): Promise<void> {
+    if (!approvalId) {
+      await interaction.reply({
+        content: "Approval id missing.",
+        ephemeral: true
+      });
+      return;
+    }
+
+    const session = this.deps.sessionManager.getById(sessionId);
+    if (!session) {
+      await interaction.reply({
+        content: "Session not found.",
+        ephemeral: true
+      });
+      return;
+    }
+
+    const repo = this.deps.repoRegistry.resolveRepoById(session.repoId);
+    if (!repo) {
+      await interaction.reply({
+        content: "Repo mapping missing for this session.",
+        ephemeral: true
+      });
+      return;
+    }
+
+    if (!this.isRepoAuthorized(repo, interaction)) {
+      await interaction.reply({
+        content: unauthorizedCommandMessage(),
+        ephemeral: true
+      });
+      return;
+    }
+
+    await interaction.deferReply({ ephemeral: true });
+    const resultMessage = await this.executeApproval(
+      repo,
+      session,
+      approvalId,
+      interaction.user.id
+    );
+    await interaction.editReply(resultMessage);
   }
 
   private async handleStatus(
@@ -253,18 +539,34 @@ export class DiscordInteractionHandler {
     session: SessionRecord
   ): Promise<void> {
     const latestRun = this.deps.db.getLatestRunForSession(session.id);
-    const changedFiles = await this.deps.gitRunner.listChangedFiles(session.worktreePath);
-    const dirty = await this.deps.gitRunner.hasUncommittedChanges(session.worktreePath);
+    const changedFiles = await this.deps.gitRunner.listChangedFiles(
+      session.worktreePath
+    );
+    const dirty = await this.deps.gitRunner.hasUncommittedChanges(
+      session.worktreePath
+    );
     const pending = this.deps.db.listPendingApprovals(session.id);
     await safeInteractionReply(interaction, {
-      content: this.deps.summaryRenderer.renderStatus(repo, session, latestRun, changedFiles, dirty, pending),
+      content: this.deps.summaryRenderer.renderStatus(
+        repo,
+        session,
+        latestRun,
+        changedFiles,
+        dirty,
+        pending
+      ),
       ephemeral: true
     });
   }
 
-  private async handleDiff(interaction: ButtonInteraction, session: SessionRecord): Promise<void> {
+  private async handleDiff(
+    interaction: ButtonInteraction,
+    session: SessionRecord
+  ): Promise<void> {
     const diff = await this.deps.gitRunner.captureDiff(session.worktreePath);
-    const payload = diff.trim() ? `\`\`\`diff\n${diff.slice(0, 3500)}\n\`\`\`` : "No diff available.";
+    const payload = diff.trim()
+      ? `\`\`\`diff\n${diff.slice(0, 3500)}\n\`\`\``
+      : "No diff available.";
     await safeInteractionReply(interaction, {
       content: payload,
       ephemeral: true
@@ -295,19 +597,25 @@ export class DiscordInteractionHandler {
       payload
     });
 
-    const threadChannel = await fetchTextChannel(this.deps.client, session.threadId);
-    if (threadChannel) {
-      if (isSendableChannel(threadChannel)) {
-        await threadChannel.send({
-          content: `Approval requested: ${approval.type}`,
-          components: [buildApprovalRow(session.id, approval.id)]
-        });
-      }
+    const threadChannel = await fetchTextChannel(
+      this.deps.client,
+      session.threadId
+    );
+    if (threadChannel && isSendableChannel(threadChannel)) {
+      await threadChannel.send({
+        content: `Approval requested: ${approval.type}`,
+        components: [buildApprovalRow(session.id, approval.id)]
+      });
     }
 
-    const approvalsChannel = await fetchTextChannel(this.deps.client, this.deps.env.approvalsChannelId);
+    const approvalsChannel = await fetchTextChannel(
+      this.deps.client,
+      this.deps.env.approvalsChannelId
+    );
     if (isSendableChannel(approvalsChannel)) {
-      await approvalsChannel.send(`Pending approval ${approval.type} for session ${session.id}`);
+      await approvalsChannel.send(
+        `Pending approval ${approval.type} for session ${session.id}`
+      );
     }
 
     await safeInteractionReply(interaction, {
@@ -325,12 +633,43 @@ export class DiscordInteractionHandler {
     if (!approvalId) {
       throw new Error("Approval id missing");
     }
-    const approval = this.deps.approvals.approve(approvalId, interaction.user.id);
+
+    if (this.deps.runAuthorization.isEnabled()) {
+      await interaction.showModal(
+        buildPasswordModal(
+          passwordModalId("approve", session.id, approvalId),
+          "Authorize Approval"
+        )
+      );
+      return;
+    }
+
+    const resultMessage = await this.executeApproval(
+      repo,
+      session,
+      approvalId,
+      interaction.user.id
+    );
+    await safeInteractionReply(interaction, {
+      content: resultMessage,
+      ephemeral: true
+    });
+  }
+
+  private async executeApproval(
+    repo: RepoDefinition,
+    session: SessionRecord,
+    approvalId: string,
+    decidedBy: string
+  ): Promise<string> {
+    const approval = this.deps.approvals.approve(approvalId, decidedBy);
     let resultMessage = `${approval.type} approved.`;
 
     switch (approval.type) {
       case "commit": {
-        const hasChanges = await this.deps.gitRunner.hasUncommittedChanges(session.worktreePath);
+        const hasChanges = await this.deps.gitRunner.hasUncommittedChanges(
+          session.worktreePath
+        );
         if (!hasChanges) {
           throw new Error("No changes to commit");
         }
@@ -344,7 +683,10 @@ export class DiscordInteractionHandler {
       case "open-pr": {
         const latestRun = this.deps.db.getLatestRunForSession(session.id);
         const summary = latestRun?.resultSummary ?? "ChatOps session update";
-        await this.deps.gitRunner.pushBranch(session.worktreePath, session.branchName);
+        await this.deps.gitRunner.pushBranch(
+          session.worktreePath,
+          session.branchName
+        );
         const pr = await this.deps.prRunner.openPullRequest({
           repo,
           branchName: session.branchName,
@@ -360,7 +702,9 @@ export class DiscordInteractionHandler {
           environment: "staging",
           branchName: session.branchName
         });
-        resultMessage = deployment.runUrl ? `${deployment.message}\n${deployment.runUrl}` : deployment.message;
+        resultMessage = deployment.runUrl
+          ? `${deployment.message}\n${deployment.runUrl}`
+          : deployment.message;
         break;
       }
       case "deploy-production": {
@@ -369,44 +713,56 @@ export class DiscordInteractionHandler {
           environment: "production",
           branchName: session.branchName
         });
-        resultMessage = deployment.runUrl ? `${deployment.message}\n${deployment.runUrl}` : deployment.message;
+        resultMessage = deployment.runUrl
+          ? `${deployment.message}\n${deployment.runUrl}`
+          : deployment.message;
         break;
       }
     }
 
-    const eventsChannel = await fetchTextChannel(this.deps.client, repo.eventsChannelId);
+    const eventsChannel = await fetchTextChannel(
+      this.deps.client,
+      repo.eventsChannelId
+    );
     if (isSendableChannel(eventsChannel)) {
-      await eventsChannel.send(`${approval.type} approved for ${repo.slug}: ${resultMessage}`);
+      await eventsChannel.send(
+        `${approval.type} approved for ${repo.slug}: ${resultMessage}`
+      );
     }
 
     const deploymentsChannel =
-      approval.type === "deploy-staging" || approval.type === "deploy-production"
+      approval.type === "deploy-staging" ||
+      approval.type === "deploy-production"
         ? await fetchTextChannel(this.deps.client, repo.deploymentsChannelId)
         : null;
-    if (deploymentsChannel) {
-      if (isSendableChannel(deploymentsChannel)) {
-        await deploymentsChannel.send(resultMessage);
-      }
+    if (deploymentsChannel && isSendableChannel(deploymentsChannel)) {
+      await deploymentsChannel.send(resultMessage);
     }
 
-    await safeInteractionReply(interaction, {
-      content: resultMessage,
-      ephemeral: true
-    });
+    return resultMessage;
   }
 
-  private async handleReject(interaction: ButtonInteraction, approvalId?: string): Promise<void> {
+  private async handleReject(
+    interaction: ButtonInteraction,
+    approvalId?: string
+  ): Promise<void> {
     if (!approvalId) {
       throw new Error("Approval id missing");
     }
-    const approval = this.deps.approvals.reject(approvalId, interaction.user.id);
+    const approval = this.deps.approvals.reject(
+      approvalId,
+      interaction.user.id
+    );
     await safeInteractionReply(interaction, {
       content: `${approval.type} rejected.`,
       ephemeral: true
     });
   }
 
-  private async handleCancel(interaction: ButtonInteraction, session: SessionRecord): Promise<void> {
+  private async handleCancel(
+    interaction: ButtonInteraction,
+    session: SessionRecord
+  ): Promise<void> {
     const controller = this.deps.activeRuns.get(session.id);
     if (!controller) {
       await safeInteractionReply(interaction, {
@@ -422,5 +778,16 @@ export class DiscordInteractionHandler {
       content: "Cancellation requested for the active run.",
       ephemeral: true
     });
+  }
+
+  private isRepoAuthorized(
+    repo: RepoDefinition,
+    interaction: RepoInteraction
+  ): boolean {
+    return this.deps.repoRegistry.isAuthorized(
+      repo,
+      interaction.user.id,
+      extractRoleIds(interaction.member)
+    );
   }
 }

@@ -1,8 +1,20 @@
 import { randomUUID } from "node:crypto";
 
-import { type Client, type GuildMember, type Message, type Snowflake } from "discord.js";
+import {
+  type Client,
+  type GuildMember,
+  type Message,
+  type Snowflake
+} from "discord.js";
 
-import { buildSessionActionRows } from "./components.js";
+import {
+  buildRunAuthorizationRow,
+  buildSessionActionRows
+} from "./components.js";
+import type {
+  PendingPromptAuthorization,
+  RunAuthorizationService
+} from "./run-authorization.js";
 import type { ThreadManager } from "./thread-manager.js";
 import type { RepoRegistry } from "../../core/repo-registry.js";
 import type { RunOrchestrator } from "../../core/run-orchestrator.js";
@@ -24,10 +36,17 @@ function stripBotMention(content: string, botId: string): string {
     .trim();
 }
 
-type SendableChannel = { send: (options: string | { content: string; components?: unknown[] }) => Promise<unknown> };
+type SendableChannel = {
+  send: (
+    options: string | { content: string; components?: unknown[] }
+  ) => Promise<unknown>;
+};
 
 function isSendableChannel(channel: unknown): channel is SendableChannel {
-  return Boolean(channel) && typeof (channel as { send?: unknown }).send === "function";
+  return (
+    Boolean(channel) &&
+    typeof (channel as { send?: unknown }).send === "function"
+  );
 }
 
 async function sendText(channel: unknown, content: string): Promise<void> {
@@ -37,7 +56,10 @@ async function sendText(channel: unknown, content: string): Promise<void> {
   await channel.send(content);
 }
 
-function normalizePrompt(prompt: string, attachments: MessageAttachmentInput[]): string {
+function normalizePrompt(
+  prompt: string,
+  attachments: MessageAttachmentInput[]
+): string {
   if (prompt.trim()) {
     return prompt.trim();
   }
@@ -57,6 +79,7 @@ export interface EventHandlerDependencies {
   threadManager: ThreadManager;
   summaryRenderer: SummaryRenderer;
   activeRuns: Map<string, AbortController>;
+  runAuthorization: RunAuthorizationService;
 }
 
 export class DiscordEventHandler {
@@ -79,7 +102,9 @@ export class DiscordEventHandler {
     }
 
     const isThread = message.channel.isThread();
-    const rootChannelId = isThread ? message.channel.parentId : message.channelId;
+    const rootChannelId = isThread
+      ? message.channel.parentId
+      : message.channelId;
     if (!rootChannelId) {
       return;
     }
@@ -90,8 +115,30 @@ export class DiscordEventHandler {
       : null;
 
     if (isThread && route) {
-      const prompt = mentioned ? stripBotMention(message.content, botId) : message.content.trim();
-      await this.continueSession(message, route, prompt, this.extractAttachments(message));
+      const prompt = mentioned
+        ? stripBotMention(message.content, botId)
+        : message.content.trim();
+      const attachments = this.extractAttachments(message);
+      const normalizedPrompt = normalizePrompt(prompt, attachments);
+      if (!normalizedPrompt && attachments.length === 0) {
+        await message.reply(
+          "Send a message in this thread or attach a file to continue the session."
+        );
+        return;
+      }
+      if (this.deps.runAuthorization.isEnabled()) {
+        await this.requestPromptAuthorization({
+          mode: "continue",
+          message,
+          repo: this.mustResolveRepo(route),
+          session: route,
+          prompt: normalizedPrompt,
+          attachments,
+          requestedBy: message.author.id
+        });
+        return;
+      }
+      await this.continueSession(message, route, normalizedPrompt, attachments);
       return;
     }
 
@@ -115,24 +162,62 @@ export class DiscordEventHandler {
       return;
     }
 
-    const prompt = mentioned ? stripBotMention(message.content, botId) : message.content.trim();
+    const prompt = mentioned
+      ? stripBotMention(message.content, botId)
+      : message.content.trim();
     const attachments = this.extractAttachments(message);
     const normalizedPrompt = normalizePrompt(prompt, attachments);
     if (!normalizedPrompt && attachments.length === 0) {
-      await message.reply("Send a task description or attach a file to start a session.");
+      await message.reply(
+        "Send a task description or attach a file to start a session."
+      );
       return;
     }
 
-    const thread = await this.deps.threadManager.createSessionThread(message, repo, normalizedPrompt);
-    const session = await this.deps.sessionManager.createSession({
-      guildId: message.guildId,
-      channelId: rootChannelId,
-      threadId: thread.id,
-      repo,
-      requestedBy: message.author.id,
-      title: normalizedPrompt
-    });
-    await this.runInThread(thread, repo, session, normalizedPrompt, message.author.id, attachments);
+    if (this.deps.runAuthorization.isEnabled()) {
+      await this.requestPromptAuthorization({
+        mode: "start",
+        message,
+        repo,
+        prompt: normalizedPrompt,
+        attachments,
+        requestedBy: message.author.id
+      });
+      return;
+    }
+
+    await this.startSession(message, repo, normalizedPrompt, attachments);
+  }
+
+  async executeAuthorizedPrompt(
+    request: PendingPromptAuthorization
+  ): Promise<void> {
+    if (request.mode === "start") {
+      await this.startSession(
+        request.message,
+        request.repo,
+        request.prompt,
+        request.attachments
+      );
+      return;
+    }
+
+    const session = request.session
+      ? (this.deps.sessionManager.getById(request.session.id) ??
+        request.session)
+      : null;
+
+    if (!session) {
+      await request.message.reply("This session no longer exists.");
+      return;
+    }
+
+    await this.continueSession(
+      request.message,
+      session,
+      request.prompt,
+      request.attachments
+    );
   }
 
   private async continueSession(
@@ -143,23 +228,77 @@ export class DiscordEventHandler {
   ): Promise<void> {
     const repo = this.deps.repoRegistry.resolveRepoById(session.repoId);
     if (!repo) {
-      await message.reply("The repo mapping for this session no longer exists.");
+      await message.reply(
+        "The repo mapping for this session no longer exists."
+      );
       return;
     }
     if (session.status === "archived") {
-      await message.reply("This session has been archived and will not accept new runs.");
+      await message.reply(
+        "This session has been archived and will not accept new runs."
+      );
       return;
     }
     if (!this.isAuthorized(repo, message.member)) {
-      await message.reply("You are not authorized to continue this repository session.");
+      await message.reply(
+        "You are not authorized to continue this repository session."
+      );
       return;
     }
     const normalizedPrompt = normalizePrompt(prompt, attachments);
     if (!normalizedPrompt && attachments.length === 0) {
-      await message.reply("Send a message in this thread or attach a file to continue the session.");
+      await message.reply(
+        "Send a message in this thread or attach a file to continue the session."
+      );
       return;
     }
-    await this.runInThread(message.channel, repo, session, normalizedPrompt, message.author.id, attachments);
+    await this.runInThread(
+      message.channel,
+      repo,
+      session,
+      normalizedPrompt,
+      message.author.id,
+      attachments
+    );
+  }
+
+  private async startSession(
+    message: Message,
+    repo: RepoDefinition,
+    normalizedPrompt: string,
+    attachments: MessageAttachmentInput[]
+  ): Promise<void> {
+    if (!message.guildId) {
+      throw new Error("Guild id missing for Discord session start");
+    }
+    const thread = await this.deps.threadManager.createSessionThread(
+      message,
+      repo,
+      normalizedPrompt
+    );
+    const session = await this.deps.sessionManager.createSession({
+      guildId: message.guildId,
+      channelId: message.channelId,
+      threadId: thread.id,
+      repo,
+      requestedBy: message.author.id,
+      title: normalizedPrompt
+    });
+    const eventsChannel = repo.eventsChannelId
+      ? await this.deps.client.channels.fetch(repo.eventsChannelId)
+      : null;
+    await sendText(
+      eventsChannel,
+      this.deps.summaryRenderer.renderSessionStarted(repo, session)
+    );
+    await this.runInThread(
+      thread,
+      repo,
+      session,
+      normalizedPrompt,
+      message.author.id,
+      attachments
+    );
   }
 
   private async runInThread(
@@ -181,8 +320,13 @@ export class DiscordEventHandler {
 
     try {
       const attachmentSummary =
-        attachments.length === 0 ? "" : ` with ${attachments.length} attachment${attachments.length === 1 ? "" : "s"}`;
-      await sendText(thread, `Starting Codex run for \`${repo.slug}\` on \`${session.branchName}\`${attachmentSummary}.`);
+        attachments.length === 0
+          ? ""
+          : ` with ${attachments.length} attachment${attachments.length === 1 ? "" : "s"}`;
+      await sendText(
+        thread,
+        `Starting Codex run for \`${repo.slug}\` on \`${session.branchName}\`${attachmentSummary}.`
+      );
       progressTimer = setTimeout(() => {
         void sendText(
           thread,
@@ -205,15 +349,33 @@ export class DiscordEventHandler {
         });
       }
 
+      const runCount = Math.max(
+        this.deps.db.listRunsForSession(session.id).length,
+        1
+      );
       const eventsChannel = repo.eventsChannelId
         ? await this.deps.client.channels.fetch(repo.eventsChannelId)
         : null;
-      await sendText(eventsChannel, this.deps.summaryRenderer.renderRepoEvent(repo, session, result.summary));
+      await sendText(
+        eventsChannel,
+        this.deps.summaryRenderer.renderRepoEvent({
+          repo,
+          session,
+          run: result.run,
+          runCount,
+          changedFiles: result.changedFiles,
+          hasUncommittedChanges: result.hasUncommittedChanges
+        })
+      );
 
       const auditChannelId = this.deps.env.auditChannelId;
       if (auditChannelId) {
-        const auditChannel = await this.deps.client.channels.fetch(auditChannelId);
-        await sendText(auditChannel, `Run completed for session ${session.id} in ${repo.slug}`);
+        const auditChannel =
+          await this.deps.client.channels.fetch(auditChannelId);
+        await sendText(
+          auditChannel,
+          `Run completed for \`${repo.slug}\`: ${session.title} (<#${session.threadId}>)`
+        );
       }
 
       this.deps.db.insertEvent({
@@ -230,7 +392,10 @@ export class DiscordEventHandler {
       });
     } catch (error) {
       logger.error({ err: error, sessionId: session.id }, "Run failed");
-      await sendText(thread, `Run failed: ${error instanceof Error ? error.message : String(error)}`);
+      await sendText(
+        thread,
+        `Run failed: ${error instanceof Error ? error.message : String(error)}`
+      );
     } finally {
       if (progressTimer) {
         clearTimeout(progressTimer);
@@ -239,11 +404,42 @@ export class DiscordEventHandler {
     }
   }
 
-  private isAuthorized(repo: RepoDefinition, member: GuildMember | null): boolean {
+  private isAuthorized(
+    repo: RepoDefinition,
+    member: GuildMember | null
+  ): boolean {
     if (!member) {
       return false;
     }
-    return this.deps.repoRegistry.isAuthorized(repo, member.id, [...member.roles.cache.keys()]);
+    return this.deps.repoRegistry.isAuthorized(repo, member.id, [
+      ...member.roles.cache.keys()
+    ]);
+  }
+
+  private async requestPromptAuthorization(input: {
+    mode: "start" | "continue";
+    message: Message;
+    repo: RepoDefinition;
+    session?: SessionRecord;
+    prompt: string;
+    attachments: MessageAttachmentInput[];
+    requestedBy: string;
+  }): Promise<void> {
+    const authorization =
+      this.deps.runAuthorization.createPromptAuthorization(input);
+    await input.message.reply({
+      content:
+        "Run authorization required. Click `Authorize Run` and enter your password to continue. If this is not you, no command will run.",
+      components: [buildRunAuthorizationRow(authorization.id)]
+    });
+  }
+
+  private mustResolveRepo(session: SessionRecord): RepoDefinition {
+    const repo = this.deps.repoRegistry.resolveRepoById(session.repoId);
+    if (!repo) {
+      throw new Error(`Repo mapping missing for session ${session.id}`);
+    }
+    return repo;
   }
 
   private extractAttachments(message: Message): MessageAttachmentInput[] {

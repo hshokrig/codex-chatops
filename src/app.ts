@@ -18,18 +18,34 @@ import { SummaryRenderer } from "./core/summary-renderer.js";
 import { UsageMetricsService } from "./core/usage-metrics.js";
 import { logger } from "./lib/logger.js";
 import { DatabaseClient } from "./persistence/db.js";
-import { createApiServer, checkCodexAuth, type ReadyState } from "./api/server.js";
-import { createDiscordClient, registerSlashCommands } from "./transport/discord/client.js";
+import {
+  createApiServer,
+  checkCodexAuth,
+  type ReadyState
+} from "./api/server.js";
+import {
+  createDiscordClient,
+  registerSlashCommands
+} from "./transport/discord/client.js";
 import { DiscordEventHandler } from "./transport/discord/event-handler.js";
 import { DiscordInteractionHandler } from "./transport/discord/interaction-handler.js";
+import { RunAuthorizationService } from "./transport/discord/run-authorization.js";
 import { ThreadManager } from "./transport/discord/thread-manager.js";
 
-function isSendableChannel(channel: unknown): channel is { send: (content: string) => Promise<unknown> } {
-  return Boolean(channel) && typeof (channel as { send?: unknown }).send === "function";
+function isSendableChannel(
+  channel: unknown
+): channel is { send: (content: string) => Promise<unknown> } {
+  return (
+    Boolean(channel) &&
+    typeof (channel as { send?: unknown }).send === "function"
+  );
 }
 
 function buildStatusMessage(readyState: ReadyState): string {
-  const ready = readyState.discordConnected && readyState.configLoaded && readyState.codexAuthHealthy;
+  const ready =
+    readyState.discordConnected &&
+    readyState.configLoaded &&
+    readyState.codexAuthHealthy;
   return [
     `ChatOps status: ${ready ? "READY" : "DEGRADED"}`,
     `Discord: ${readyState.discordConnected ? "connected" : "disconnected"}`,
@@ -87,7 +103,12 @@ export async function createApplication() {
   const summaryRenderer = new SummaryRenderer();
   const promptBuilder = new PromptBuilder();
   const codexRunner = new CodexRunner(env);
-  const sessionManager = new SessionManager(db, gitRunner, artifactWriter, env.chatopsRoot);
+  const sessionManager = new SessionManager(
+    db,
+    gitRunner,
+    artifactWriter,
+    env.chatopsRoot
+  );
   const runOrchestrator = new RunOrchestrator(
     db,
     codexRunner,
@@ -102,6 +123,9 @@ export async function createApplication() {
   const usageMetrics = new UsageMetricsService(db);
   const discordClient = createDiscordClient(env);
   const threadManager = new ThreadManager();
+  const runAuthorization = new RunAuthorizationService(
+    env.discordOperatorPassword
+  );
   const activeRuns = new Map<string, AbortController>();
   const readyState: ReadyState = {
     discordConnected: false,
@@ -151,7 +175,8 @@ export async function createApplication() {
     runOrchestrator,
     threadManager,
     summaryRenderer,
-    activeRuns
+    activeRuns,
+    runAuthorization
   });
 
   const interactionHandler = new DiscordInteractionHandler({
@@ -165,7 +190,9 @@ export async function createApplication() {
     prRunner,
     deployRunner,
     summaryRenderer,
-    activeRuns
+    activeRuns,
+    eventHandler,
+    runAuthorization
   });
 
   eventHandler.register();
@@ -205,23 +232,33 @@ export async function createApplication() {
     discordClient
   });
 
-  const usageInterval = setInterval(async () => {
-    const date = new Date().toISOString().slice(0, 10);
-    const rollups = usageMetrics.persistDailyRollups(date);
-    const channelId = env.usageChannelId;
-    if (channelId) {
-      const channel = await discordClient.channels.fetch(channelId);
-      if (channel && "send" in channel && typeof channel.send === "function") {
-        await channel.send(summaryRenderer.renderUsageMetrics(date, rollups));
+  const usageInterval = setInterval(
+    async () => {
+      const date = new Date().toISOString().slice(0, 10);
+      const rollups = usageMetrics.persistDailyRollups(date);
+      const channelId = env.usageChannelId;
+      if (channelId) {
+        const channel = await discordClient.channels.fetch(channelId);
+        if (
+          channel &&
+          "send" in channel &&
+          typeof channel.send === "function"
+        ) {
+          await channel.send(summaryRenderer.renderUsageMetrics(date, rollups));
+        }
       }
-    }
-  }, 1000 * 60 * 60 * 24);
+    },
+    1000 * 60 * 60 * 24
+  );
 
-  const codexAuthInterval = setInterval(async () => {
-    readyState.codexAuthHealthy = await checkCodexAuth(env.codexBin);
-    publishPresence();
-    await publishStatus();
-  }, 1000 * 60 * 60 * 24);
+  const codexAuthInterval = setInterval(
+    async () => {
+      readyState.codexAuthHealthy = await checkCodexAuth(env.codexBin);
+      publishPresence();
+      await publishStatus();
+    },
+    1000 * 60 * 60 * 24
+  );
 
   return {
     env,

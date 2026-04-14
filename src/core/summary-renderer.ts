@@ -1,5 +1,20 @@
-import type { ApprovalRecord, RepoDefinition, RunRecord, SessionRecord, UsageRollup } from "../types/domain.js";
+import type {
+  ApprovalRecord,
+  RepoDefinition,
+  RunRecord,
+  SessionRecord,
+  UsageRollup
+} from "../types/domain.js";
 import type { CheckResult } from "./git-runner.js";
+
+function sessionTitle(session: SessionRecord, repo: RepoDefinition): string {
+  const normalized = session.title.replace(/\s+/g, " ").trim();
+  return normalized || `${repo.slug} session`;
+}
+
+function threadMention(session: SessionRecord): string {
+  return `<#${session.threadId}>`;
+}
 
 export interface RunSummaryInput {
   repo: RepoDefinition;
@@ -12,19 +27,33 @@ export interface RunSummaryInput {
   pendingApprovals: ApprovalRecord[];
 }
 
+export interface RepoEventInput {
+  repo: RepoDefinition;
+  session: SessionRecord;
+  run: RunRecord;
+  runCount: number;
+  changedFiles: string[];
+  hasUncommittedChanges: boolean;
+}
+
 export class SummaryRenderer {
   renderRunSummary(input: RunSummaryInput): string {
     const checksSummary =
       input.checks.length === 0
         ? "No configured checks."
         : input.checks
-            .map((check) => `${check.exitCode === 0 ? "PASS" : "FAIL"} ${check.command}`)
+            .map(
+              (check) =>
+                `${check.exitCode === 0 ? "PASS" : "FAIL"} ${check.command}`
+            )
             .join("\n");
 
     const approvals =
       input.pendingApprovals.length === 0
         ? "None"
-        : input.pendingApprovals.map((approval) => `${approval.type} (${approval.status})`).join(", ");
+        : input.pendingApprovals
+            .map((approval) => `${approval.type} (${approval.status})`)
+            .join(", ");
 
     return [
       `Run ${input.run.status.toUpperCase()} for \`${input.repo.slug}\``,
@@ -39,8 +68,25 @@ export class SummaryRenderer {
     ].join("\n");
   }
 
-  renderRepoEvent(repo: RepoDefinition, session: SessionRecord, summary: string): string {
-    return `Repo update for \`${repo.slug}\` in thread \`${session.threadId}\`\n\n${summary.trim()}`;
+  renderSessionStarted(repo: RepoDefinition, session: SessionRecord): string {
+    return [
+      `New Codex session for \`${repo.slug}\``,
+      `Thread: ${threadMention(session)}`,
+      `Title: ${sessionTitle(session, repo)}`,
+      `Session: \`${session.id}\``
+    ].join("\n");
+  }
+
+  renderRepoEvent(input: RepoEventInput): string {
+    return [
+      `Codex activity for \`${input.repo.slug}\``,
+      `Thread: ${threadMention(input.session)}`,
+      `Title: ${sessionTitle(input.session, input.repo)}`,
+      `Run status: ${input.run.status}`,
+      `Runs in session: ${input.runCount}`,
+      `Changed files: ${input.changedFiles.length}`,
+      `Dirty worktree: ${input.hasUncommittedChanges ? "yes" : "no"}`
+    ].join("\n");
   }
 
   renderDeploymentUpdate(
@@ -69,6 +115,8 @@ export class SummaryRenderer {
     return [
       `Session ${session.id}`,
       `Repo: ${repo.slug}`,
+      `Title: ${sessionTitle(session, repo)}`,
+      `Thread: ${threadMention(session)}`,
       `Branch: ${session.branchName}`,
       `State: ${session.status}`,
       `Latest run: ${latestRun?.status ?? "none"}`,

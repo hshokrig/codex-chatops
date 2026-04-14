@@ -48,7 +48,9 @@ export interface RepoDefinition {
   allowedUsers: string[];
   allowedRoles: string[];
   checks: string[];
-  deployWorkflows: Partial<Record<"staging" | "production", DeploymentWorkflowConfig>>;
+  deployWorkflows: Partial<
+    Record<"staging" | "production", DeploymentWorkflowConfig>
+  >;
   requirePrApproval: boolean;
   requireProdConfirmation: boolean;
   githubOwner?: string;
@@ -64,6 +66,7 @@ export interface EnvironmentConfig {
   discordApplicationId: string;
   discordPublicKey?: string;
   discordGuildId: string;
+  discordOperatorPassword?: string;
   chatopsDbPath: string;
   chatopsRoot: string;
   chatopsRepoMapPath: string;

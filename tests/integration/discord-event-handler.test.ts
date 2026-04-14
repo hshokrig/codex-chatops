@@ -6,6 +6,7 @@ import { RepoRegistry } from "../../src/core/repo-registry.js";
 import { SessionManager } from "../../src/core/session-manager.js";
 import { SummaryRenderer } from "../../src/core/summary-renderer.js";
 import { DiscordEventHandler } from "../../src/transport/discord/event-handler.js";
+import { RunAuthorizationService } from "../../src/transport/discord/run-authorization.js";
 import { createTestDb, createTestRepo } from "../helpers/test-db.js";
 
 const cleanups: Array<() => void> = [];
@@ -17,7 +18,7 @@ afterEach(() => {
 });
 
 describe("DiscordEventHandler", () => {
-  it("starts a new session thread from a top-level mention and mirrors summary to repo events", async () => {
+  it("starts a new session thread from a top-level mention and mirrors lightweight activity to repo events", async () => {
     const repo = createTestRepo({
       sessionChannelId: "mint-sessions",
       eventsChannelId: "mint-events"
@@ -42,10 +43,14 @@ describe("DiscordEventHandler", () => {
         channels: {
           fetch: vi.fn(async (channelId: string) => {
             if (channelId === "mint-events") {
-              return { send: vi.fn(async (payload) => eventMessages.push(payload)) };
+              return {
+                send: vi.fn(async (payload) => eventMessages.push(payload))
+              };
             }
             if (channelId === "audit-log") {
-              return { send: vi.fn(async (payload) => auditMessages.push(payload)) };
+              return {
+                send: vi.fn(async (payload) => auditMessages.push(payload))
+              };
             }
             return null;
           })
@@ -105,7 +110,8 @@ describe("DiscordEventHandler", () => {
         createSessionThread: vi.fn(async () => fakeThread)
       } as never,
       summaryRenderer: new SummaryRenderer(),
-      activeRuns: new Map()
+      activeRuns: new Map(),
+      runAuthorization: new RunAuthorizationService()
     });
 
     const message = {
@@ -124,8 +130,16 @@ describe("DiscordEventHandler", () => {
     await handler.handleMessage(message as never);
 
     expect(threadMessages).toHaveLength(2);
-    expect(eventMessages).toHaveLength(1);
+    expect(eventMessages).toHaveLength(2);
+    expect(eventMessages[0]).toContain("New Codex session for `mint`");
+    expect(eventMessages[0]).toContain("Thread: <#thread-1>");
+    expect(eventMessages[0]).toContain("Title: fix the flaky login tests");
+    expect(eventMessages[1]).toContain("Codex activity for `mint`");
+    expect(eventMessages[1]).toContain("Runs in session: 1");
+    expect(eventMessages[1]).toContain("Changed files: 1");
+    expect(eventMessages[1]).not.toContain("Fixed flaky test");
     expect(auditMessages).toHaveLength(1);
+    expect(auditMessages[0]).toContain("fix the flaky login tests");
     expect(fixture.db.getSessionByThreadId("thread-1")).not.toBeNull();
   });
 
@@ -204,7 +218,8 @@ describe("DiscordEventHandler", () => {
         createSessionThread: vi.fn(async () => fakeThread)
       } as never,
       summaryRenderer: new SummaryRenderer(),
-      activeRuns: new Map()
+      activeRuns: new Map(),
+      runAuthorization: new RunAuthorizationService()
     });
 
     const message = {
@@ -302,7 +317,8 @@ describe("DiscordEventHandler", () => {
       } as never,
       threadManager: { createSessionThread: vi.fn() } as never,
       summaryRenderer: new SummaryRenderer(),
-      activeRuns: new Map()
+      activeRuns: new Map(),
+      runAuthorization: new RunAuthorizationService()
     });
 
     const message = {
@@ -365,7 +381,8 @@ describe("DiscordEventHandler", () => {
       runOrchestrator: { execute: vi.fn() } as never,
       threadManager: { createSessionThread: vi.fn() } as never,
       summaryRenderer: new SummaryRenderer(),
-      activeRuns: new Map()
+      activeRuns: new Map(),
+      runAuthorization: new RunAuthorizationService()
     });
 
     const message = {
@@ -457,7 +474,8 @@ describe("DiscordEventHandler", () => {
         createSessionThread: vi.fn(async () => fakeThread)
       } as never,
       summaryRenderer: new SummaryRenderer(),
-      activeRuns: new Map()
+      activeRuns: new Map(),
+      runAuthorization: new RunAuthorizationService()
     });
 
     const attachments = new Map([
@@ -572,7 +590,8 @@ describe("DiscordEventHandler", () => {
         createSessionThread: vi.fn(async () => fakeThread)
       } as never,
       summaryRenderer: new SummaryRenderer(),
-      activeRuns: new Map()
+      activeRuns: new Map(),
+      runAuthorization: new RunAuthorizationService()
     });
 
     const attachments = new Map([
@@ -608,5 +627,84 @@ describe("DiscordEventHandler", () => {
         prompt: "Review the attached files and summarize anything relevant."
       })
     );
+  });
+
+  it("requires password authorization before starting a prompt run when operator password is configured", async () => {
+    const repo = createTestRepo({
+      sessionChannelId: "mint-sessions",
+      eventsChannelId: "mint-events"
+    });
+    const fixture = createTestDb([repo]);
+    cleanups.push(fixture.cleanup);
+
+    const execute = vi.fn();
+    const createSessionThread = vi.fn();
+    const reply = vi.fn();
+
+    const handler = new DiscordEventHandler({
+      client: {
+        user: { id: "bot-1" },
+        channels: { fetch: vi.fn(async () => null) }
+      } as never,
+      env: {
+        discordBotToken: "token",
+        discordApplicationId: "app",
+        discordGuildId: "guild-1",
+        discordOperatorPassword: "test-password",
+        chatopsDbPath: `${fixture.root}/db.sqlite`,
+        chatopsRoot: fixture.root,
+        chatopsRepoMapPath: `${fixture.root}/repo-map.yaml`,
+        codexMode: "sdk",
+        codexBin: "codex",
+        allowThreadPlainReply: false,
+        enablePrs: true,
+        enableDeploys: true,
+        enableDiscordBootstrap: false,
+        discordBootstrapMode: "validate",
+        githubUseGhCli: false,
+        fastifyHost: "127.0.0.1",
+        fastifyPort: 3000
+      },
+      db: fixture.db,
+      repoRegistry: new RepoRegistry(fixture.db),
+      sessionManager: new SessionManager(
+        fixture.db,
+        {
+          prepareSessionWorkspace: vi.fn(async () => ({
+            branchName: "chatops/mint/session-1",
+            worktreePath: `${fixture.root}/worktree`
+          }))
+        } as unknown as GitRunner,
+        new ArtifactWriter(fixture.root),
+        fixture.root
+      ),
+      runOrchestrator: { execute } as never,
+      threadManager: { createSessionThread } as never,
+      summaryRenderer: new SummaryRenderer(),
+      activeRuns: new Map(),
+      runAuthorization: new RunAuthorizationService("test-password")
+    });
+
+    const message = {
+      author: { bot: false, id: "user-1" },
+      content: "ship the patch",
+      inGuild: () => true,
+      mentions: { users: { has: () => false } },
+      channel: { isThread: () => false },
+      channelId: "mint-sessions",
+      guildId: "guild-1",
+      attachments: new Map(),
+      member: { id: "user-1", roles: { cache: new Map() } },
+      reply
+    };
+
+    await handler.handleMessage(message as never);
+
+    expect(execute).not.toHaveBeenCalled();
+    expect(createSessionThread).not.toHaveBeenCalled();
+    expect(reply).toHaveBeenCalledOnce();
+    expect(reply.mock.calls[0]?.[0]).toMatchObject({
+      content: expect.stringContaining("Run authorization required")
+    });
   });
 });

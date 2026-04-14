@@ -9,6 +9,7 @@ const envSchema = z.object({
   DISCORD_APPLICATION_ID: z.string().min(1),
   DISCORD_PUBLIC_KEY: z.string().min(1).optional(),
   DISCORD_GUILD_ID: z.string().min(1),
+  DISCORD_OPERATOR_PASSWORD: z.string().min(1).optional(),
   CHATOPS_DB_PATH: z.string().min(1).default(".chatops/chatops.sqlite"),
   CHATOPS_ROOT: z.string().min(1).default(".chatops"),
   CHATOPS_REPO_MAP_PATH: z.string().min(1).default(".secrets/repo-map.yaml"),
@@ -31,7 +32,9 @@ const envSchema = z.object({
     .string()
     .default("true")
     .transform((value) => value === "true"),
-  DISCORD_BOOTSTRAP_MODE: z.enum(["validate", "create-missing"]).default("create-missing"),
+  DISCORD_BOOTSTRAP_MODE: z
+    .enum(["validate", "create-missing"])
+    .default("create-missing"),
   STATUS_CHANNEL_ID: z.string().min(1).optional(),
   USAGE_CHANNEL_ID: z.string().min(1).optional(),
   AUDIT_CHANNEL_ID: z.string().min(1).optional(),
@@ -49,7 +52,9 @@ const envSchema = z.object({
     .pipe(z.number().int().positive())
 });
 
-export function loadEnv(input: NodeJS.ProcessEnv = process.env): EnvironmentConfig {
+export function loadEnv(
+  input: NodeJS.ProcessEnv = process.env
+): EnvironmentConfig {
   const parsed = envSchema.parse(input);
   const cwd = process.cwd();
 
@@ -58,6 +63,7 @@ export function loadEnv(input: NodeJS.ProcessEnv = process.env): EnvironmentConf
     discordApplicationId: parsed.DISCORD_APPLICATION_ID,
     discordPublicKey: parsed.DISCORD_PUBLIC_KEY,
     discordGuildId: parsed.DISCORD_GUILD_ID,
+    discordOperatorPassword: parsed.DISCORD_OPERATOR_PASSWORD,
     chatopsDbPath: path.resolve(cwd, parsed.CHATOPS_DB_PATH),
     chatopsRoot: path.resolve(cwd, parsed.CHATOPS_ROOT),
     chatopsRepoMapPath: path.resolve(cwd, parsed.CHATOPS_REPO_MAP_PATH),
