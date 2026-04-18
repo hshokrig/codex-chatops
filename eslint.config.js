@@ -6,7 +6,7 @@ import prettier from "eslint-config-prettier";
 
 export default [
   {
-    ignores: ["dist/**", "coverage/**", "node_modules/**"]
+    ignores: ["dist/**", "coverage/**", "node_modules/**", ".chatops/**"]
   },
   js.configs.recommended,
   {

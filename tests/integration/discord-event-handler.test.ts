@@ -416,6 +416,278 @@ describe("DiscordEventHandler", () => {
     expect(fixture.db.raw("SELECT * FROM sessions")).toHaveLength(0);
   });
 
+  it("starts a generic session from a bot mention in an arbitrary channel and forwards channel context", async () => {
+    const repo = createTestRepo({
+      sessionChannelId: "mint-sessions",
+      eventsChannelId: "mint-events"
+    });
+    const genericRepo = createTestRepo({
+      slug: "__generic__",
+      categoryName: "00-control",
+      sessionChannelId: "",
+      eventsChannelId: "",
+      deploymentsChannelId: "",
+      localPath: `${process.cwd()}`,
+      defaultBranch: "direct",
+      workspaceMode: "direct"
+    });
+    const fixture = createTestDb([repo]);
+    cleanups.push(fixture.cleanup);
+
+    const threadMessages: unknown[] = [];
+    const fakeThread = {
+      id: "thread-generic-1",
+      send: vi.fn(async (payload) => {
+        threadMessages.push(payload);
+      })
+    };
+    const execute = vi.fn(async ({ session, conversationContext }) => ({
+      run: {
+        id: "run-generic-1",
+        sessionId: session.id,
+        prompt: "inspect /home/hossein/Projects/Tandvy-Klinic",
+        requestedBy: "user-1",
+        status: "succeeded",
+        resultSummary: "Generic workspace ok",
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        completedAt: new Date().toISOString()
+      },
+      summary: conversationContext ?? "missing context",
+      changedFiles: [],
+      hasUncommittedChanges: false
+    }));
+
+    const handler = new DiscordEventHandler({
+      client: {
+        user: { id: "bot-1" },
+        channels: { fetch: vi.fn(async () => null) }
+      } as never,
+      env: {
+        discordBotToken: "token",
+        discordApplicationId: "app",
+        discordGuildId: "guild-1",
+        chatopsDbPath: `${fixture.root}/db.sqlite`,
+        chatopsRoot: fixture.root,
+        chatopsRepoMapPath: `${fixture.root}/repo-map.yaml`,
+        codexMode: "sdk",
+        codexBin: "codex",
+        allowThreadPlainReply: false,
+        enablePrs: true,
+        enableDeploys: true,
+        enableDiscordBootstrap: false,
+        discordBootstrapMode: "validate",
+        githubUseGhCli: false,
+        fastifyHost: "127.0.0.1",
+        fastifyPort: 3000,
+        genericWorkspacePath: process.cwd()
+      },
+      db: fixture.db,
+      repoRegistry: new RepoRegistry(fixture.db, genericRepo),
+      sessionManager: new SessionManager(
+        fixture.db,
+        {
+          prepareSessionWorkspace: vi.fn(async () => ({
+            branchName: "direct/__generic__/session-1",
+            worktreePath: process.cwd()
+          }))
+        } as unknown as GitRunner,
+        new ArtifactWriter(fixture.root),
+        fixture.root
+      ),
+      runOrchestrator: { execute } as never,
+      threadManager: {
+        createSessionThread: vi.fn(async () => fakeThread)
+      } as never,
+      summaryRenderer: new SummaryRenderer(),
+      activeRuns: new Map(),
+      runAuthorization: new RunAuthorizationService()
+    });
+
+    const message = {
+      id: "message-generic-1",
+      author: { bot: false, id: "user-1", username: "hossein" },
+      content:
+        "<@bot-1> inspect /home/hossein/Projects/Tandvy-Klinic and tell me if the repo looks healthy",
+      createdAt: new Date("2026-04-18T12:00:00.000Z"),
+      inGuild: () => true,
+      mentions: { users: { has: (id: string) => id === "bot-1" } },
+      channel: {
+        isThread: () => false,
+        messages: {
+          fetch: vi.fn(async () =>
+            new Map([
+              [
+                "previous-1",
+                {
+                  author: { username: "alice" },
+                  content: "please check the latest repo state",
+                  createdAt: new Date("2026-04-18T11:59:00.000Z")
+                }
+              ]
+            ])
+          )
+        }
+      },
+      channelId: "random-channel",
+      guildId: "guild-1",
+      attachments: new Map(),
+      member: { id: "user-1", roles: { cache: new Map() } },
+      fetchReference: vi.fn(async () => ({
+        author: { username: "alice" },
+        content: "look at the repo in this path",
+        createdAt: new Date("2026-04-18T11:58:00.000Z")
+      })),
+      reply: vi.fn()
+    };
+
+    await handler.handleMessage(message as never);
+
+    expect(threadMessages).toHaveLength(2);
+    expect(fixture.db.getSessionByThreadId("thread-generic-1")?.repoId).toBe(
+      "__generic__"
+    );
+    expect(execute).toHaveBeenCalledWith(
+      expect.objectContaining({
+        conversationContext: expect.stringContaining("Recent channel messages:")
+      })
+    );
+    expect(execute).toHaveBeenCalledWith(
+      expect.objectContaining({
+        conversationContext: expect.stringContaining("Referenced message:")
+      })
+    );
+  });
+
+  it("continues the latest channel session from a new top-level message without creating a fresh thread", async () => {
+    const repo = createTestRepo({
+      slug: "tandvy-klinic",
+      sessionChannelId: "tandvy-sessions",
+      eventsChannelId: "tandvy-events"
+    });
+    const fixture = createTestDb([repo]);
+    cleanups.push(fixture.cleanup);
+    const repoRegistry = new RepoRegistry(fixture.db);
+    const sessionManager = new SessionManager(
+      fixture.db,
+      {
+        prepareSessionWorkspace: vi.fn(async () => ({
+          branchName: "chatops/tandvy-klinic/session-1",
+          worktreePath: `${fixture.root}/worktree`
+        }))
+      } as unknown as GitRunner,
+      new ArtifactWriter(fixture.root),
+      fixture.root
+    );
+    const session = await sessionManager.createSession({
+      guildId: "guild-1",
+      channelId: "tandvy-sessions",
+      threadId: "thread-channel-followup-1",
+      repo,
+      requestedBy: "user-1",
+      title: "initial prompt"
+    });
+
+    const channelMessages: unknown[] = [];
+    const threadMessages: unknown[] = [];
+    const createSessionThread = vi.fn();
+    const execute = vi.fn(async ({ session: activeSession, prompt }) => ({
+      run: {
+        id: "run-parent-followup-1",
+        sessionId: activeSession.id,
+        prompt,
+        requestedBy: "user-1",
+        status: "succeeded",
+        resultSummary: "Follow-up done",
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        completedAt: new Date().toISOString()
+      },
+      summary: "Follow-up done",
+      changedFiles: [],
+      hasUncommittedChanges: false
+    }));
+
+    const handler = new DiscordEventHandler({
+      client: {
+        user: { id: "bot-1" },
+        channels: {
+          fetch: vi.fn(async (channelId: string) => {
+            if (channelId === session.threadId) {
+              return {
+                id: session.threadId,
+                send: vi.fn(async (payload) => {
+                  threadMessages.push(payload);
+                })
+              };
+            }
+            return null;
+          })
+        }
+      } as never,
+      env: {
+        discordBotToken: "token",
+        discordApplicationId: "app",
+        discordGuildId: "guild-1",
+        chatopsDbPath: `${fixture.root}/db.sqlite`,
+        chatopsRoot: fixture.root,
+        chatopsRepoMapPath: `${fixture.root}/repo-map.yaml`,
+        codexMode: "sdk",
+        codexBin: "codex",
+        allowThreadPlainReply: false,
+        enablePrs: true,
+        enableDeploys: true,
+        enableDiscordBootstrap: false,
+        discordBootstrapMode: "validate",
+        githubUseGhCli: false,
+        fastifyHost: "127.0.0.1",
+        fastifyPort: 3000
+      },
+      db: fixture.db,
+      repoRegistry,
+      sessionManager,
+      runOrchestrator: { execute } as never,
+      threadManager: { createSessionThread } as never,
+      summaryRenderer: new SummaryRenderer(),
+      activeRuns: new Map(),
+      runAuthorization: new RunAuthorizationService()
+    });
+
+    const message = {
+      id: "message-parent-followup-1",
+      author: { bot: false, id: "user-1" },
+      content: "follow up without replying inside the thread",
+      createdAt: new Date("2026-04-18T12:01:00.000Z"),
+      inGuild: () => true,
+      mentions: { users: { has: () => false } },
+      channel: {
+        isThread: () => false,
+        send: vi.fn(async (payload) => {
+          channelMessages.push(payload);
+        }),
+        messages: {
+          fetch: vi.fn(async () => new Map())
+        }
+      },
+      channelId: "tandvy-sessions",
+      guildId: "guild-1",
+      attachments: new Map(),
+      member: { id: "user-1", roles: { cache: new Map() } },
+      reply: vi.fn()
+    };
+
+    await handler.handleMessage(message as never);
+
+    expect(createSessionThread).not.toHaveBeenCalled();
+    expect(channelMessages).toHaveLength(1);
+    expect(threadMessages).toHaveLength(2);
+    expect(execute).toHaveBeenCalledWith(
+      expect.objectContaining({
+        session: expect.objectContaining({ id: session.id })
+      })
+    );
+  });
+
   it("forwards message attachments to the orchestrator", async () => {
     const repo = createTestRepo({
       slug: "tandvy-klinic",

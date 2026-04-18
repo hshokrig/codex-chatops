@@ -21,6 +21,7 @@ export class DiscordBootstrapService {
     repos: RepoDefinition[];
     mode: "validate" | "create-missing";
     globalChannels: {
+      chatChannelId?: string;
       statusChannelId?: string;
       usageChannelId?: string;
       auditChannelId?: string;
@@ -106,6 +107,11 @@ export class DiscordBootstrapService {
     };
 
     const controlCategory = await ensureCategory("00-control");
+    await ensureTextChannel(
+      input.globalChannels.chatChannelId,
+      "codex-chat",
+      controlCategory
+    );
     await ensureTextChannel(
       input.globalChannels.statusChannelId,
       "codex-status",

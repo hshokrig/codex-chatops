@@ -37,6 +37,7 @@ import { DiscordEventHandler } from "./transport/discord/event-handler.js";
 import { DiscordInteractionHandler } from "./transport/discord/interaction-handler.js";
 import { RunAuthorizationService } from "./transport/discord/run-authorization.js";
 import { ThreadManager } from "./transport/discord/thread-manager.js";
+import type { RepoDefinition } from "./types/domain.js";
 
 function isSendableChannel(channel: unknown): channel is {
   send: (content: string | MessageCreateOptions) => Promise<unknown>;
@@ -88,6 +89,30 @@ function buildPresence(readyState: ReadyState): {
   };
 }
 
+function buildGenericRepo(env: ReturnType<typeof loadEnv>): RepoDefinition | null {
+  if (!env.genericWorkspacePath) {
+    return null;
+  }
+
+  return {
+    slug: "__generic__",
+    categoryName: "00-control",
+    sessionChannelId: env.chatChannelId ?? "",
+    eventsChannelId: "",
+    deploymentsChannelId: "",
+    localPath: env.genericWorkspacePath,
+    defaultBranch: "direct",
+    codexProfile: env.codexProfile ?? "default",
+    workspaceMode: "direct",
+    allowedUsers: [],
+    allowedRoles: [],
+    checks: [],
+    deployWorkflows: {},
+    requirePrApproval: true,
+    requireProdConfirmation: true
+  };
+}
+
 export async function createApplication() {
   loadDotenv({ path: ".env", quiet: true });
   loadDotenv({ path: ".secrets/.env.local", quiet: true, override: true });
@@ -95,8 +120,10 @@ export async function createApplication() {
   const env = loadEnv();
   const repoMap = await loadRepoMap(env.chatopsRepoMapPath);
   const db = new DatabaseClient(env.chatopsDbPath);
-  const repoRegistry = new RepoRegistry(db);
+  const genericRepo = buildGenericRepo(env);
+  const repoRegistry = new RepoRegistry(db, genericRepo);
   repoRegistry.sync(repoMap.repos, {
+    chatChannelId: env.chatChannelId,
     statusChannelId: env.statusChannelId,
     usageChannelId: env.usageChannelId,
     auditChannelId: env.auditChannelId,
@@ -142,6 +169,7 @@ export async function createApplication() {
     configLoaded: true,
     codexAuthHealthy: await checkCodexAuth(env.codexBin)
   };
+  db.failIncompleteRuns("Interrupted before completion. The ChatOps service restarted or the Codex process failed.");
   let lastStatusMessage = "";
 
   const publishStatus = async (): Promise<void> => {
@@ -229,6 +257,7 @@ export async function createApplication() {
         repos: repoRegistry.listRepos(),
         mode: env.discordBootstrapMode,
         globalChannels: {
+          chatChannelId: env.chatChannelId,
           statusChannelId: env.statusChannelId,
           usageChannelId: env.usageChannelId,
           auditChannelId: env.auditChannelId,

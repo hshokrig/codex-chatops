@@ -9,6 +9,7 @@ export interface PromptBuildInput {
   repo: RepoDefinition;
   session: SessionRecord;
   request: string;
+  conversationContext?: string;
   priorRuns: RunRecord[];
   checks: string[];
   summaryPath: string;
@@ -33,6 +34,9 @@ export class PromptBuilder {
       `Active branch: ${input.session.branchName}`,
       `Session objective: Continue the Discord thread session ${input.session.id}`,
       `Current run request: ${input.request}`,
+      "",
+      "Conversation context:",
+      input.conversationContext?.trim() || "No recent Discord context captured.",
       "",
       "Attachments:",
       !input.attachments || input.attachments.length === 0

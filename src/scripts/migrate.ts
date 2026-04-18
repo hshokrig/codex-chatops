@@ -12,6 +12,7 @@ const repoMap = await loadRepoMap(env.chatopsRepoMapPath);
 const db = new DatabaseClient(env.chatopsDbPath);
 
 db.syncRepoConfig(repoMap.repos, {
+  chatChannelId: env.chatChannelId,
   statusChannelId: env.statusChannelId,
   usageChannelId: env.usageChannelId,
   auditChannelId: env.auditChannelId,

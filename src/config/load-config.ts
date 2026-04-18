@@ -19,6 +19,7 @@ export async function loadRepoMap(filePath: string): Promise<RepoMap> {
     localPath: repo.local_path,
     defaultBranch: repo.default_branch,
     codexProfile: repo.codex_profile,
+    workspaceMode: "git-worktree",
     allowedUsers: repo.allowed_users,
     allowedRoles: repo.allowed_roles,
     checks: repo.checks,

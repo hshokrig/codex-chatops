@@ -2,10 +2,13 @@ export type ChannelPurpose =
   | "session-intake"
   | "repo-events"
   | "repo-deployments"
+  | "global-chat"
   | "global-status"
   | "global-usage"
   | "global-audit"
   | "global-approvals";
+
+export type WorkspaceMode = "git-worktree" | "direct";
 
 export type SessionStatus =
   | "open"
@@ -45,6 +48,7 @@ export interface RepoDefinition {
   localPath: string;
   defaultBranch: string;
   codexProfile: string;
+  workspaceMode: WorkspaceMode;
   allowedUsers: string[];
   allowedRoles: string[];
   checks: string[];
@@ -78,6 +82,8 @@ export interface EnvironmentConfig {
   enableDeploys: boolean;
   enableDiscordBootstrap: boolean;
   discordBootstrapMode: "validate" | "create-missing";
+  chatChannelId?: string;
+  genericWorkspacePath?: string;
   statusChannelId?: string;
   usageChannelId?: string;
   auditChannelId?: string;

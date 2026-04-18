@@ -2,11 +2,15 @@ import type { RepoDefinition } from "../types/domain.js";
 import type { DatabaseClient } from "../persistence/db.js";
 
 export class RepoRegistry {
-  constructor(private readonly db: DatabaseClient) {}
+  constructor(
+    private readonly db: DatabaseClient,
+    private readonly genericRepo: RepoDefinition | null = null
+  ) {}
 
   sync(
     repos: RepoDefinition[],
     globals: {
+      chatChannelId?: string;
       statusChannelId?: string;
       usageChannelId?: string;
       auditChannelId?: string;
@@ -21,6 +25,9 @@ export class RepoRegistry {
   }
 
   resolveRepoById(repoId: string): RepoDefinition | null {
+    if (this.genericRepo?.slug === repoId) {
+      return this.genericRepo;
+    }
     return this.db.getRepoById(repoId);
   }
 
@@ -30,6 +37,10 @@ export class RepoRegistry {
 
   listRepos(): RepoDefinition[] {
     return this.db.listRepos();
+  }
+
+  getGenericRepo(): RepoDefinition | null {
+    return this.genericRepo;
   }
 
   isAuthorized(

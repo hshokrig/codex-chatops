@@ -46,6 +46,7 @@ function rowToRepoDefinition(
     localPath: row.local_path,
     defaultBranch: row.default_branch,
     codexProfile: row.codex_profile,
+    workspaceMode: "git-worktree",
     allowedUsers: parseJson<string[]>(row.allowed_users_json),
     allowedRoles: parseJson<string[]>(row.allowed_roles_json),
     checks: parseJson<string[]>(row.checks_json),
@@ -80,6 +81,7 @@ export class DatabaseClient {
   syncRepoConfig(
     repos: RepoDefinition[],
     globals: {
+      chatChannelId?: string;
       statusChannelId?: string;
       usageChannelId?: string;
       auditChannelId?: string;
@@ -155,6 +157,7 @@ export class DatabaseClient {
         });
       }
 
+      this.upsertGlobalBinding(globals.chatChannelId, "global-chat");
       this.upsertGlobalBinding(globals.statusChannelId, "global-status");
       this.upsertGlobalBinding(globals.usageChannelId, "global-usage");
       this.upsertGlobalBinding(globals.auditChannelId, "global-audit");
@@ -168,7 +171,11 @@ export class DatabaseClient {
     channelId: string | undefined,
     purpose: Extract<
       ChannelPurpose,
-      "global-status" | "global-usage" | "global-audit" | "global-approvals"
+      | "global-chat"
+      | "global-status"
+      | "global-usage"
+      | "global-audit"
+      | "global-approvals"
     >
   ): void {
     if (!channelId) {
@@ -335,6 +342,28 @@ export class DatabaseClient {
     return row ? this.mapSession(row) : null;
   }
 
+  getLatestActiveSessionByChannel(
+    channelId: string,
+    requestedBy?: string
+  ): SessionRecord | null {
+    const requestedByClause = requestedBy ? "AND requested_by = ?" : "";
+    const params = requestedBy ? [channelId, requestedBy] : [channelId];
+    const row = this.sqlite
+      .prepare(
+        `
+        SELECT *
+        FROM sessions
+        WHERE channel_id = ?
+          AND status != 'archived'
+          ${requestedByClause}
+        ORDER BY updated_at DESC, created_at DESC
+        LIMIT 1
+      `
+      )
+      .get(...params) as JsonRow | undefined;
+    return row ? this.mapSession(row) : null;
+  }
+
   updateSessionStatus(sessionId: string, status: SessionStatus): void {
     this.sqlite
       .prepare("UPDATE sessions SET status = ?, updated_at = ? WHERE id = ?")
@@ -403,6 +432,35 @@ export class DatabaseClient {
         completed_at: patch.completedAt ?? null,
         updated_at: nowIso()
       });
+  }
+
+  failIncompleteRuns(summary: string): number {
+    const timestamp = nowIso();
+    const result = this.sqlite
+      .prepare(
+        `
+        UPDATE runs
+        SET status = 'failed',
+            result_summary = COALESCE(result_summary, ?),
+            completed_at = COALESCE(completed_at, ?),
+            updated_at = ?
+        WHERE status = 'running'
+      `
+      )
+      .run(summary, timestamp, timestamp);
+
+    this.sqlite
+      .prepare(
+        `
+        UPDATE sessions
+        SET status = 'failed',
+            updated_at = ?
+        WHERE status = 'running'
+      `
+      )
+      .run(timestamp);
+
+    return result.changes;
   }
 
   getLatestRunForSession(sessionId: string): RunRecord | null {

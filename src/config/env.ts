@@ -1,8 +1,47 @@
+import { existsSync, readdirSync } from "node:fs";
+import { homedir } from "node:os";
 import path from "node:path";
 
 import { z } from "zod";
 
 import type { EnvironmentConfig } from "../types/domain.js";
+
+function resolveCodexBin(configuredBin: string): string {
+  if (!configuredBin.includes(path.sep) || existsSync(configuredBin)) {
+    return configuredBin;
+  }
+
+  const extensionsRoot = path.join(homedir(), ".vscode", "extensions");
+  if (!existsSync(extensionsRoot)) {
+    return configuredBin;
+  }
+
+  const candidates = readdirSync(extensionsRoot, { withFileTypes: true })
+    .filter(
+      (entry) =>
+        entry.isDirectory() && entry.name.startsWith("openai.chatgpt-")
+    )
+    .map((entry) => path.join(extensionsRoot, entry.name))
+    .sort((left, right) => right.localeCompare(left));
+
+  for (const extensionRoot of candidates) {
+    const binRoot = path.join(extensionRoot, "bin");
+    if (!existsSync(binRoot)) {
+      continue;
+    }
+    for (const entry of readdirSync(binRoot, { withFileTypes: true })) {
+      if (!entry.isDirectory()) {
+        continue;
+      }
+      const candidate = path.join(binRoot, entry.name, "codex");
+      if (existsSync(candidate)) {
+        return candidate;
+      }
+    }
+  }
+
+  return configuredBin;
+}
 
 const envSchema = z.object({
   DISCORD_BOT_TOKEN: z.string().min(1),
@@ -35,6 +74,8 @@ const envSchema = z.object({
   DISCORD_BOOTSTRAP_MODE: z
     .enum(["validate", "create-missing"])
     .default("create-missing"),
+  CHAT_CHANNEL_ID: z.string().min(1).optional(),
+  GENERIC_WORKSPACE_PATH: z.string().min(1).optional(),
   STATUS_CHANNEL_ID: z.string().min(1).optional(),
   USAGE_CHANNEL_ID: z.string().min(1).optional(),
   AUDIT_CHANNEL_ID: z.string().min(1).optional(),
@@ -68,13 +109,17 @@ export function loadEnv(
     chatopsRoot: path.resolve(cwd, parsed.CHATOPS_ROOT),
     chatopsRepoMapPath: path.resolve(cwd, parsed.CHATOPS_REPO_MAP_PATH),
     codexMode: parsed.CODEX_MODE,
-    codexBin: parsed.CODEX_BIN,
+    codexBin: resolveCodexBin(parsed.CODEX_BIN),
     codexProfile: parsed.CODEX_PROFILE,
     allowThreadPlainReply: parsed.ALLOW_THREAD_PLAIN_REPLY,
     enablePrs: parsed.ENABLE_PRS,
     enableDeploys: parsed.ENABLE_DEPLOYS,
     enableDiscordBootstrap: parsed.ENABLE_DISCORD_BOOTSTRAP,
     discordBootstrapMode: parsed.DISCORD_BOOTSTRAP_MODE,
+    chatChannelId: parsed.CHAT_CHANNEL_ID,
+    genericWorkspacePath: parsed.GENERIC_WORKSPACE_PATH
+      ? path.resolve(cwd, parsed.GENERIC_WORKSPACE_PATH)
+      : undefined,
     statusChannelId: parsed.STATUS_CHANNEL_ID,
     usageChannelId: parsed.USAGE_CHANNEL_ID,
     auditChannelId: parsed.AUDIT_CHANNEL_ID,

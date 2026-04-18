@@ -1,8 +1,8 @@
 # Sample Transcripts
 
-## Session Start
+## Repo Session Start
 
-`@RepoBot fix the flaky login tests and tighten retry handling`
+`fix the flaky login tests and tighten retry handling`
 
 Bot creates thread:
 `mint: fix the flaky login tests and tighten retry handling`
@@ -21,11 +21,25 @@ Pending approvals: None`
 
 ## Follow-Up
 
-`@RepoBot add timeout coverage too`
+Top-level message in the same `#codex-sessions` channel:
+`add timeout coverage too`
 
 Bot summary:
 `Run SUCCEEDED for mint
 Changed files (3): src/auth/retry.ts, tests/login.spec.ts, tests/timeout.spec.ts`
+
+## Generic Chat
+
+In `#codex-chat`:
+
+`inspect /home/me/Projects/social-media-agent and summarize the current test setup`
+
+Bot creates thread:
+`__generic__: inspect /home/me/Projects/social-media-agent and summarize the current test setup`
+
+Bot summary:
+`Run SUCCEEDED for __generic__
+Summary: inspected the requested path and summarized scripts, test framework, and current gaps`
 
 ## Commit Approval
 

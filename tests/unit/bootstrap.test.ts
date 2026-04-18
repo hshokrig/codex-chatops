@@ -75,11 +75,14 @@ describe("DiscordBootstrapService", () => {
       guildId: "guild-1",
       repos: [createTestRepo()],
       mode: "create-missing",
-      globalChannels: {}
+      globalChannels: {
+        chatChannelId: "codex-chat-id"
+      }
     });
 
     expect(created).toContain("00-control");
     expect(created).toContain("10-mint");
+    expect(created).toContain("codex-chat");
     expect(created).toContain("codex-sessions");
     expect(report.created.length).toBeGreaterThan(0);
   });

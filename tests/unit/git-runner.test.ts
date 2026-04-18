@@ -57,6 +57,7 @@ describe("GitRunner", () => {
         localPath: repoPath,
         defaultBranch: "main",
         codexProfile: "default",
+        workspaceMode: "git-worktree",
         allowedUsers: [],
         allowedRoles: [],
         checks: [],

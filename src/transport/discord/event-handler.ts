@@ -72,6 +72,46 @@ function normalizePrompt(
   return "";
 }
 
+function formatAuthorName(message: {
+  author?: {
+    globalName?: string | null;
+    username?: string | null;
+    tag?: string | null;
+    id?: string;
+  };
+}): string {
+  return (
+    message.author?.globalName ??
+    message.author?.username ??
+    message.author?.tag ??
+    message.author?.id ??
+    "unknown"
+  );
+}
+
+function formatConversationMessage(
+  message: {
+    author?: {
+      globalName?: string | null;
+      username?: string | null;
+      tag?: string | null;
+      id?: string;
+    };
+    content?: string;
+    createdAt?: Date;
+    createdTimestamp?: number;
+  },
+  fallback = "No text content."
+): string {
+  const createdAt = message.createdAt
+    ? message.createdAt.toISOString()
+    : typeof message.createdTimestamp === "number"
+      ? new Date(message.createdTimestamp).toISOString()
+      : "unknown time";
+  const content = message.content?.trim() || fallback;
+  return `[${createdAt}] ${formatAuthorName(message)}: ${content}`;
+}
+
 export interface EventHandlerDependencies {
   client: Client;
   env: EnvironmentConfig;
@@ -116,6 +156,7 @@ export class DiscordEventHandler {
     const route = isThread
       ? this.deps.sessionManager.getByThreadId(message.channelId)
       : null;
+    const conversationContext = await this.captureConversationContext(message);
 
     if (isThread && route) {
       const prompt = mentioned
@@ -136,26 +177,51 @@ export class DiscordEventHandler {
           repo: this.mustResolveRepo(route),
           session: route,
           prompt: normalizedPrompt,
+          conversationContext,
           attachments,
           requestedBy: message.author.id
         });
         return;
       }
-      await this.continueSession(message, route, normalizedPrompt, attachments);
+      await this.continueSession(
+        message,
+        route,
+        normalizedPrompt,
+        attachments,
+        conversationContext
+      );
       return;
     }
 
     const binding = this.deps.repoRegistry.resolveBinding(rootChannelId);
-    if (!binding || binding.purpose !== "session-intake") {
-      return;
-    }
-
     if (isThread) {
       return;
     }
 
-    const repo = this.deps.repoRegistry.resolveSessionRepo(rootChannelId);
+    const repo = this.resolveStartRepo(rootChannelId, binding?.purpose, mentioned);
     if (!repo) {
+      if (mentioned) {
+        await message.reply(
+          "Generic chat is not configured. Set `GENERIC_WORKSPACE_PATH` to allow bot mentions outside repo intake channels."
+        );
+      }
+      return;
+    }
+
+    if (
+      !mentioned &&
+      binding &&
+      binding.purpose !== "session-intake" &&
+      binding.purpose !== "global-chat"
+    ) {
+      return;
+    }
+
+    if (
+      mentioned &&
+      !binding &&
+      repo.workspaceMode !== "direct"
+    ) {
       await message.reply("This channel is not bound to a managed repository.");
       return;
     }
@@ -177,19 +243,43 @@ export class DiscordEventHandler {
       return;
     }
 
+    const existingSession = this.deps.sessionManager.getLatestActiveByChannel(
+      message.channelId,
+      message.author.id
+    );
+
     if (this.deps.runAuthorization.isEnabled()) {
       await this.requestPromptAuthorization({
-        mode: "start",
+        mode: existingSession ? "continue" : "start",
         message,
-        repo,
+        repo: existingSession ? this.mustResolveRepo(existingSession) : repo,
+        session: existingSession ?? undefined,
         prompt: normalizedPrompt,
+        conversationContext,
         attachments,
         requestedBy: message.author.id
       });
       return;
     }
 
-    await this.startSession(message, repo, normalizedPrompt, attachments);
+    if (existingSession) {
+      await this.continueSessionFromParentChannel(
+        message,
+        existingSession,
+        normalizedPrompt,
+        attachments,
+        conversationContext
+      );
+      return;
+    }
+
+    await this.startSession(
+      message,
+      repo,
+      normalizedPrompt,
+      attachments,
+      conversationContext
+    );
   }
 
   async executeAuthorizedPrompt(
@@ -200,7 +290,8 @@ export class DiscordEventHandler {
         request.message,
         request.repo,
         request.prompt,
-        request.attachments
+        request.attachments,
+        request.conversationContext
       );
       return;
     }
@@ -219,7 +310,8 @@ export class DiscordEventHandler {
       request.message,
       session,
       request.prompt,
-      request.attachments
+      request.attachments,
+      request.conversationContext
     );
   }
 
@@ -227,7 +319,8 @@ export class DiscordEventHandler {
     message: Message,
     session: SessionRecord,
     prompt: string,
-    attachments: MessageAttachmentInput[]
+    attachments: MessageAttachmentInput[],
+    conversationContext?: string
   ): Promise<void> {
     const repo = this.deps.repoRegistry.resolveRepoById(session.repoId);
     if (!repo) {
@@ -261,7 +354,8 @@ export class DiscordEventHandler {
       session,
       normalizedPrompt,
       message.author.id,
-      attachments
+      attachments,
+      conversationContext
     );
   }
 
@@ -269,7 +363,8 @@ export class DiscordEventHandler {
     message: Message,
     repo: RepoDefinition,
     normalizedPrompt: string,
-    attachments: MessageAttachmentInput[]
+    attachments: MessageAttachmentInput[],
+    conversationContext?: string
   ): Promise<void> {
     if (!message.guildId) {
       throw new Error("Guild id missing for Discord session start");
@@ -306,7 +401,51 @@ export class DiscordEventHandler {
       session,
       normalizedPrompt,
       message.author.id,
-      attachments
+      attachments,
+      conversationContext
+    );
+  }
+
+  private async continueSessionFromParentChannel(
+    message: Message,
+    session: SessionRecord,
+    prompt: string,
+    attachments: MessageAttachmentInput[],
+    conversationContext?: string
+  ): Promise<void> {
+    const repo = this.mustResolveRepo(session);
+    if (session.status === "archived") {
+      await sendText(
+        message.channel,
+        buildCardMessage("The latest session in this channel is archived.", {
+          tone: "warning",
+          footer: repo.slug
+        })
+      );
+      return;
+    }
+
+    const thread = await this.deps.client.channels.fetch(session.threadId);
+    if (!thread) {
+      await message.reply("The latest session thread for this channel was not found.");
+      return;
+    }
+
+    await sendText(
+      message.channel,
+      buildCardMessage(`Continuing the latest session in <#${session.threadId}>.`, {
+        tone: "info",
+        footer: repo.slug
+      })
+    );
+    await this.runInThread(
+      thread,
+      repo,
+      session,
+      prompt,
+      message.author.id,
+      attachments,
+      conversationContext
     );
   }
 
@@ -316,7 +455,8 @@ export class DiscordEventHandler {
     session: SessionRecord,
     prompt: string,
     requestedBy: Snowflake,
-    attachments: MessageAttachmentInput[]
+    attachments: MessageAttachmentInput[],
+    conversationContext?: string
   ): Promise<void> {
     if (this.deps.activeRuns.has(session.id)) {
       await sendText(thread, "A run is already active in this session.");
@@ -358,6 +498,7 @@ export class DiscordEventHandler {
         session,
         repo,
         prompt,
+        conversationContext,
         requestedBy,
         attachments,
         signal: controller.signal
@@ -464,6 +605,7 @@ export class DiscordEventHandler {
     repo: RepoDefinition;
     session?: SessionRecord;
     prompt: string;
+    conversationContext?: string;
     attachments: MessageAttachmentInput[];
     requestedBy: string;
   }): Promise<void> {
@@ -492,5 +634,73 @@ export class DiscordEventHandler {
       contentType: attachment.contentType ?? undefined,
       size: attachment.size ?? undefined
     }));
+  }
+
+  private resolveStartRepo(
+    channelId: string,
+    purpose: string | undefined,
+    mentioned: boolean
+  ): RepoDefinition | null {
+    if (purpose === "session-intake") {
+      return this.deps.repoRegistry.resolveSessionRepo(channelId);
+    }
+
+    if (purpose === "global-chat") {
+      return this.deps.repoRegistry.getGenericRepo();
+    }
+
+    if (mentioned) {
+      return this.deps.repoRegistry.getGenericRepo();
+    }
+
+    return null;
+  }
+
+  private async captureConversationContext(message: Message): Promise<string> {
+    const sections: string[] = [];
+
+    if (typeof message.fetchReference === "function") {
+      try {
+        const referenced = await message.fetchReference();
+        sections.push(
+          "Referenced message:\n" + formatConversationMessage(referenced)
+        );
+      } catch {
+        // Ignore missing or inaccessible references.
+      }
+    }
+
+    const channel = message.channel as {
+      messages?: {
+        fetch?: (input?: { limit?: number; before?: string }) => Promise<unknown>;
+      };
+    };
+
+    if (channel.messages?.fetch) {
+      try {
+        const fetched = await channel.messages.fetch({
+          limit: 10,
+          before: message.id
+        });
+        const recentMessages =
+          fetched && typeof fetched === "object" && "values" in fetched
+            ? [...(fetched as { values: () => Iterable<Message> }).values()]
+            : [];
+        if (recentMessages.length > 0) {
+          sections.push(
+            [
+              "Recent channel messages:",
+              ...recentMessages
+                .reverse()
+                .map((entry) => formatConversationMessage(entry))
+            ].join("\n")
+          );
+        }
+      } catch {
+        // Ignore fetch failures and continue without channel history.
+      }
+    }
+
+    return sections.join("\n\n");
   }
 }

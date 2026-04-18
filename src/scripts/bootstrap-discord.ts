@@ -23,6 +23,7 @@ client.once("clientReady", async () => {
     repos: repoMap.repos,
     mode: env.discordBootstrapMode,
     globalChannels: {
+      chatChannelId: env.chatChannelId,
       statusChannelId: env.statusChannelId,
       usageChannelId: env.usageChannelId,
       auditChannelId: env.auditChannelId,

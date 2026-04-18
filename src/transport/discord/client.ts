@@ -8,13 +8,13 @@ import {
 import { slashCommands } from "./interaction-handler.js";
 import type { EnvironmentConfig } from "../../types/domain.js";
 
-export function createDiscordClient(env: EnvironmentConfig): Client {
+export function createDiscordClient(_env: EnvironmentConfig): Client {
   return new Client({
     intents: [
       GatewayIntentBits.Guilds,
       GatewayIntentBits.GuildMessages,
       GatewayIntentBits.GuildMembers,
-      ...(env.allowThreadPlainReply ? [GatewayIntentBits.MessageContent] : [])
+      GatewayIntentBits.MessageContent
     ],
     partials: [Partials.Channel]
   });

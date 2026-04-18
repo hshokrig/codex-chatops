@@ -25,6 +25,15 @@ export class GitRunner {
     sessionId: string,
     chatopsRoot: string
   ): Promise<SessionWorkspace> {
+    if (repo.workspaceMode === "direct") {
+      const worktreePath = path.resolve(repo.localPath);
+      await ensureDirectory(worktreePath);
+      return {
+        branchName: `direct/${repo.slug}/${sessionId}`,
+        worktreePath
+      };
+    }
+
     const branchName = `chatops/${repo.slug}/${sessionId}`;
     const root = path.resolve(chatopsRoot);
     const worktreePath = path.join(root, "worktrees", sessionId);

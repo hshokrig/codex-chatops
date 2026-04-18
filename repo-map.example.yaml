@@ -7,6 +7,7 @@ repos:
     local_path: /path/to/mint
     default_branch: main
     codex_profile: default
+    # managed repos use isolated git worktrees automatically
     allowed_users:
       - "123456789012345678"
     allowed_roles:

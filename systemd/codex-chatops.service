@@ -4,6 +4,7 @@ After=network-online.target
 
 [Service]
 Type=simple
+# Template only. Adjust the checkout path for your own machine before enabling.
 WorkingDirectory=%h/Projects/codex-chatops
 ExecStart=/bin/bash -lc 'cd %h/Projects/codex-chatops && pnpm start'
 Restart=on-failure

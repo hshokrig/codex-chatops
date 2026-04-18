@@ -43,4 +43,22 @@ describe("RepoRegistry", () => {
     expect(registry.isAuthorized(repo, "user-2", ["role-1"])).toBe(false);
     expect(registry.isAuthorized(repo, "user-1", ["role-2"])).toBe(false);
   });
+
+  it("resolves an in-memory generic repo by id", () => {
+    const fixture = createTestDb();
+    cleanups.push(fixture.cleanup);
+    const genericRepo = createTestRepo({
+      slug: "__generic__",
+      workspaceMode: "direct",
+      sessionChannelId: "",
+      eventsChannelId: "",
+      deploymentsChannelId: ""
+    });
+    const registry = new RepoRegistry(fixture.db, genericRepo);
+
+    expect(registry.resolveRepoById("__generic__")?.workspaceMode).toBe(
+      "direct"
+    );
+    expect(registry.getGenericRepo()?.slug).toBe("__generic__");
+  });
 });

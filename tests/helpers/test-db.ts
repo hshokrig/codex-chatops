@@ -17,6 +17,7 @@ export function createTestRepo(
     localPath: "/tmp/mint",
     defaultBranch: "main",
     codexProfile: "default",
+    workspaceMode: "git-worktree",
     allowedUsers: [],
     allowedRoles: [],
     checks: [],

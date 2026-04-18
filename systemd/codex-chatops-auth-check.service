@@ -3,5 +3,6 @@ Description=Codex auth health check
 
 [Service]
 Type=oneshot
+# Template only. Adjust the checkout path for your own machine before enabling.
 WorkingDirectory=%h/Projects/codex-chatops
-ExecStart=/home/hossein/.vscode/extensions/openai.chatgpt-26.409.20454-linux-x64/bin/linux-x86_64/codex login status
+ExecStart=/bin/bash -lc 'cd %h/Projects/codex-chatops && codex login status'

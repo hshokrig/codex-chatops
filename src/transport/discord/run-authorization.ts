@@ -24,6 +24,7 @@ export interface PendingPromptAuthorization {
   repo: RepoDefinition;
   session?: SessionRecord;
   prompt: string;
+  conversationContext?: string;
   attachments: MessageAttachmentInput[];
   requestedBy: string;
   createdAt: number;
@@ -51,6 +52,7 @@ export class RunAuthorizationService {
     repo: RepoDefinition;
     session?: SessionRecord;
     prompt: string;
+    conversationContext?: string;
     attachments: MessageAttachmentInput[];
     requestedBy: string;
   }): PendingPromptAuthorization {
@@ -62,6 +64,7 @@ export class RunAuthorizationService {
       repo: input.repo,
       session: input.session,
       prompt: input.prompt,
+      conversationContext: input.conversationContext,
       attachments: input.attachments,
       requestedBy: input.requestedBy,
       createdAt: now,

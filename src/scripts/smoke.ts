@@ -14,6 +14,7 @@ const db = new DatabaseClient(env.chatopsDbPath);
 const codexAuthHealthy = await checkCodexAuth(env.codexBin);
 
 db.syncRepoConfig(repoMap.repos, {
+  chatChannelId: env.chatChannelId,
   statusChannelId: env.statusChannelId,
   usageChannelId: env.usageChannelId,
   auditChannelId: env.auditChannelId,

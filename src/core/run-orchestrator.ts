@@ -39,6 +39,7 @@ export class RunOrchestrator {
     session: SessionRecord;
     repo: RepoDefinition;
     prompt: string;
+    conversationContext?: string;
     requestedBy: string;
     attachments?: MessageAttachmentInput[];
     signal?: AbortSignal;
@@ -70,6 +71,7 @@ export class RunOrchestrator {
       repo: input.repo,
       session: input.session,
       request: input.prompt,
+      conversationContext: input.conversationContext,
       priorRuns,
       checks: input.repo.checks,
       attachments: preparedAttachments,
@@ -91,86 +93,98 @@ export class RunOrchestrator {
         : {}),
       ...(input.signal ? { signal: input.signal } : {})
     };
-    const codexResult = await this.codexRunner.run(codexRequest);
+    try {
+      const codexResult = await this.codexRunner.run(codexRequest);
 
-    if (
-      codexResult.threadId !== input.session.codexThreadId &&
-      codexResult.threadId
-    ) {
-      this.db.updateSessionCodexThread(input.session.id, codexResult.threadId);
-    }
-
-    const checks = await this.gitRunner.runChecks(
-      input.session.worktreePath,
-      input.repo.checks
-    );
-    const changedFiles = await this.gitRunner.listChangedFiles(
-      input.session.worktreePath
-    );
-    const patchDiff = await this.gitRunner.captureDiff(
-      input.session.worktreePath
-    );
-    const hasUncommittedChanges = await this.gitRunner.hasUncommittedChanges(
-      input.session.worktreePath
-    );
-    const pendingApprovals = this.db.listPendingApprovals(input.session.id);
-    const renderInputRun: RunRecord = {
-      ...run,
-      status: checks.some((check) => check.exitCode !== 0)
-        ? "failed"
-        : "succeeded",
-      resultSummary: codexResult.summary,
-      completedAt: nowIso(),
-      updatedAt: nowIso()
-    };
-
-    const summary = this.summaryRenderer.renderRunSummary({
-      repo: input.repo,
-      session: input.session,
-      run: renderInputRun,
-      checks,
-      changedFiles,
-      summary: codexResult.summary,
-      hasUncommittedChanges,
-      pendingApprovals
-    });
-
-    await this.artifactWriter.writeRunArtifacts({
-      session: input.session,
-      runId,
-      requestPrompt: prompt,
-      summary,
-      checks,
-      patchDiff,
-      events: codexResult.events,
-      metadata: {
-        changedFiles,
-        items: codexResult.items,
-        attachments: preparedAttachments
+      if (
+        codexResult.threadId !== input.session.codexThreadId &&
+        codexResult.threadId
+      ) {
+        this.db.updateSessionCodexThread(input.session.id, codexResult.threadId);
       }
-    });
 
-    const finalStatus = checks.some((check) => check.exitCode !== 0)
-      ? "failed"
-      : "succeeded";
-    this.db.updateRun(runId, {
-      status: finalStatus,
-      resultSummary: summary,
-      completedAt: nowIso()
-    });
-    this.db.updateSessionStatus(
-      input.session.id,
-      finalStatus === "failed" ? "failed" : "open"
-    );
+      const checks = await this.gitRunner.runChecks(
+        input.session.worktreePath,
+        input.repo.checks
+      );
+      const changedFiles = await this.gitRunner.listChangedFiles(
+        input.session.worktreePath
+      );
+      const patchDiff = await this.gitRunner.captureDiff(
+        input.session.worktreePath
+      );
+      const hasUncommittedChanges = await this.gitRunner.hasUncommittedChanges(
+        input.session.worktreePath
+      );
+      const pendingApprovals = this.db.listPendingApprovals(input.session.id);
+      const renderInputRun: RunRecord = {
+        ...run,
+        status: checks.some((check) => check.exitCode !== 0)
+          ? "failed"
+          : "succeeded",
+        resultSummary: codexResult.summary,
+        completedAt: nowIso(),
+        updatedAt: nowIso()
+      };
 
-    return {
-      run: {
-        ...renderInputRun,
-        resultSummary: summary
-      },
-      summary,
-      changedFiles,
-      hasUncommittedChanges
-    };
+      const summary = this.summaryRenderer.renderRunSummary({
+        repo: input.repo,
+        session: input.session,
+        run: renderInputRun,
+        checks,
+        changedFiles,
+        summary: codexResult.summary,
+        hasUncommittedChanges,
+        pendingApprovals
+      });
+
+      await this.artifactWriter.writeRunArtifacts({
+        session: input.session,
+        runId,
+        requestPrompt: prompt,
+        summary,
+        checks,
+        patchDiff,
+        events: codexResult.events,
+        metadata: {
+          changedFiles,
+          items: codexResult.items,
+          attachments: preparedAttachments
+        }
+      });
+
+      const finalStatus = checks.some((check) => check.exitCode !== 0)
+        ? "failed"
+        : "succeeded";
+      this.db.updateRun(runId, {
+        status: finalStatus,
+        resultSummary: summary,
+        completedAt: nowIso()
+      });
+      this.db.updateSessionStatus(
+        input.session.id,
+        finalStatus === "failed" ? "failed" : "open"
+      );
+
+      return {
+        run: {
+          ...renderInputRun,
+          resultSummary: summary
+        },
+        summary,
+        changedFiles,
+        hasUncommittedChanges
+      };
+    } catch (error) {
+      const failureSummary =
+        error instanceof Error ? error.message : String(error);
+      this.db.updateRun(runId, {
+        status: "failed",
+        resultSummary: failureSummary,
+        completedAt: nowIso()
+      });
+      this.db.updateSessionStatus(input.session.id, "failed");
+      throw error;
+    }
   }
 }

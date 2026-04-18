@@ -62,6 +62,13 @@ export class SessionManager {
     return this.db.getSessionById(sessionId);
   }
 
+  getLatestActiveByChannel(
+    channelId: string,
+    requestedBy?: string
+  ): SessionRecord | null {
+    return this.db.getLatestActiveSessionByChannel(channelId, requestedBy);
+  }
+
   setStatus(sessionId: string, status: SessionRecord["status"]): void {
     this.db.updateSessionStatus(sessionId, status);
   }

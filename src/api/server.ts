@@ -69,6 +69,7 @@ export async function createApiServer(deps: ApiServerDependencies) {
       repos: deps.repoRegistry.listRepos(),
       mode: deps.env.discordBootstrapMode,
       globalChannels: {
+        chatChannelId: deps.env.chatChannelId,
         statusChannelId: deps.env.statusChannelId,
         usageChannelId: deps.env.usageChannelId,
         auditChannelId: deps.env.auditChannelId,
