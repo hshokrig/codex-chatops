@@ -13,6 +13,7 @@ export interface ReadyState {
   discordConnected: boolean;
   configLoaded: boolean;
   codexAuthHealthy: boolean;
+  discordFailureReason?: string;
 }
 
 export interface ApiServerDependencies {

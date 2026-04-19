@@ -14,6 +14,7 @@ export interface CodexRunRequest {
   worktreePath: string;
   threadId?: string;
   profile?: string;
+  skipGitRepoCheck?: boolean;
   onEvent?: (event: ThreadEvent) => Promise<void> | void;
   signal?: AbortSignal;
 }
@@ -51,7 +52,7 @@ export class CodexRunner {
       workingDirectory: request.worktreePath,
       sandboxMode: "danger-full-access",
       approvalPolicy: "never",
-      skipGitRepoCheck: false,
+      skipGitRepoCheck: request.skipGitRepoCheck ?? false,
       webSearchEnabled: false
     };
 
@@ -107,6 +108,9 @@ export class CodexRunner {
       : ["exec", request.prompt, "--json"];
 
     args.push("-C", request.worktreePath);
+    if (request.skipGitRepoCheck) {
+      args.push("--skip-git-repo-check");
+    }
     if (request.profile ?? this.env.codexProfile) {
       args.push("-p", request.profile ?? this.env.codexProfile ?? "default");
     }

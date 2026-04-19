@@ -167,10 +167,12 @@ export async function createApplication() {
   const readyState: ReadyState = {
     discordConnected: false,
     configLoaded: true,
-    codexAuthHealthy: await checkCodexAuth(env.codexBin)
+    codexAuthHealthy: await checkCodexAuth(env.codexBin),
+    discordFailureReason: "Discord login has not succeeded yet."
   };
   db.failIncompleteRuns("Interrupted before completion. The ChatOps service restarted or the Codex process failed.");
   let lastStatusMessage = "";
+  let discordLoginInFlight = false;
 
   const publishStatus = async (): Promise<void> => {
     if (!env.statusChannelId) {
@@ -244,8 +246,18 @@ export async function createApplication() {
   eventHandler.register();
   interactionHandler.register();
 
+  discordClient.on("shardDisconnect", () => {
+    readyState.discordConnected = false;
+    readyState.discordFailureReason = "Discord gateway disconnected.";
+  });
+  discordClient.on("invalidated", () => {
+    readyState.discordConnected = false;
+    readyState.discordFailureReason = "Discord session invalidated.";
+  });
+
   discordClient.once("clientReady", async () => {
     readyState.discordConnected = true;
+    readyState.discordFailureReason = undefined;
     publishPresence();
     await registerSlashCommands(discordClient, env.discordGuildId);
     vsCodeSessionBridge.start();
@@ -316,6 +328,36 @@ export async function createApplication() {
     1000 * 60 * 60 * 24
   );
 
+  const attemptDiscordLogin = async (): Promise<void> => {
+    if (discordLoginInFlight || readyState.discordConnected) {
+      return;
+    }
+
+    discordLoginInFlight = true;
+    try {
+      await discordClient.login(env.discordBotToken);
+      publishPresence();
+      logger.info("ChatOps service started");
+    } catch (error) {
+      readyState.discordConnected = false;
+      readyState.discordFailureReason =
+        error instanceof Error ? error.message : "Unknown Discord login failure";
+      logger.error(
+        { err: error },
+        "Discord login failed; service will stay up and retry in the background"
+      );
+    } finally {
+      discordLoginInFlight = false;
+    }
+  };
+
+  const discordReconnectInterval = setInterval(
+    async () => {
+      await attemptDiscordLogin();
+    },
+    1000 * 60
+  );
+
   return {
     env,
     db,
@@ -327,13 +369,12 @@ export async function createApplication() {
         host: env.fastifyHost,
         port: env.fastifyPort
       });
-      await discordClient.login(env.discordBotToken);
-      publishPresence();
-      logger.info("ChatOps service started");
+      await attemptDiscordLogin();
     },
     async stop() {
       clearInterval(usageInterval);
       clearInterval(codexAuthInterval);
+      clearInterval(discordReconnectInterval);
       vsCodeSessionBridge.stop();
       await api.close();
       await discordClient.destroy();

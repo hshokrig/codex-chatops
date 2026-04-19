@@ -88,6 +88,7 @@ export class RunOrchestrator {
     const codexRequest = {
       prompt,
       worktreePath: input.session.worktreePath,
+      skipGitRepoCheck: input.repo.workspaceMode === "direct",
       ...(input.session.codexThreadId
         ? { threadId: input.session.codexThreadId }
         : {}),
