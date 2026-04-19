@@ -92,6 +92,7 @@ function formatAuthorName(message: {
 function formatConversationMessage(
   message: {
     author?: {
+      bot?: boolean | null;
       globalName?: string | null;
       username?: string | null;
       tag?: string | null;
@@ -110,6 +111,15 @@ function formatConversationMessage(
       : "unknown time";
   const content = message.content?.trim() || fallback;
   return `[${createdAt}] ${formatAuthorName(message)}: ${content}`;
+}
+
+function isHumanConversationMessage(message: {
+  author?: {
+    bot?: boolean | null;
+    system?: boolean | null;
+  };
+}): boolean {
+  return !message.author?.bot && !message.author?.system;
 }
 
 export interface EventHandlerDependencies {
@@ -198,7 +208,11 @@ export class DiscordEventHandler {
       return;
     }
 
-    const repo = this.resolveStartRepo(rootChannelId, binding?.purpose, mentioned);
+    const repo = this.resolveStartRepo(
+      rootChannelId,
+      binding?.purpose,
+      mentioned
+    );
     if (!repo) {
       if (mentioned) {
         await message.reply(
@@ -217,11 +231,7 @@ export class DiscordEventHandler {
       return;
     }
 
-    if (
-      mentioned &&
-      !binding &&
-      repo.workspaceMode !== "direct"
-    ) {
+    if (mentioned && !binding && repo.workspaceMode !== "direct") {
       await message.reply("This channel is not bound to a managed repository.");
       return;
     }
@@ -427,16 +437,21 @@ export class DiscordEventHandler {
 
     const thread = await this.deps.client.channels.fetch(session.threadId);
     if (!thread) {
-      await message.reply("The latest session thread for this channel was not found.");
+      await message.reply(
+        "The latest session thread for this channel was not found."
+      );
       return;
     }
 
     await sendText(
       message.channel,
-      buildCardMessage(`Continuing the latest session in <#${session.threadId}>.`, {
-        tone: "info",
-        footer: repo.slug
-      })
+      buildCardMessage(
+        `Continuing the latest session in <#${session.threadId}>.`,
+        {
+          tone: "info",
+          footer: repo.slug
+        }
+      )
     );
     await this.runInThread(
       thread,
@@ -662,9 +677,11 @@ export class DiscordEventHandler {
     if (typeof message.fetchReference === "function") {
       try {
         const referenced = await message.fetchReference();
-        sections.push(
-          "Referenced message:\n" + formatConversationMessage(referenced)
-        );
+        if (isHumanConversationMessage(referenced)) {
+          sections.push(
+            "Referenced message:\n" + formatConversationMessage(referenced)
+          );
+        }
       } catch {
         // Ignore missing or inaccessible references.
       }
@@ -672,7 +689,10 @@ export class DiscordEventHandler {
 
     const channel = message.channel as {
       messages?: {
-        fetch?: (input?: { limit?: number; before?: string }) => Promise<unknown>;
+        fetch?: (input?: {
+          limit?: number;
+          before?: string;
+        }) => Promise<unknown>;
       };
     };
 
@@ -686,11 +706,14 @@ export class DiscordEventHandler {
           fetched && typeof fetched === "object" && "values" in fetched
             ? [...(fetched as { values: () => Iterable<Message> }).values()]
             : [];
-        if (recentMessages.length > 0) {
+        const humanMessages = recentMessages.filter((entry) =>
+          isHumanConversationMessage(entry)
+        );
+        if (humanMessages.length > 0) {
           sections.push(
             [
               "Recent channel messages:",
-              ...recentMessages
+              ...humanMessages
                 .reverse()
                 .map((entry) => formatConversationMessage(entry))
             ].join("\n")

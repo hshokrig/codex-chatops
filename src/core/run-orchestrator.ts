@@ -101,7 +101,10 @@ export class RunOrchestrator {
         codexResult.threadId !== input.session.codexThreadId &&
         codexResult.threadId
       ) {
-        this.db.updateSessionCodexThread(input.session.id, codexResult.threadId);
+        this.db.updateSessionCodexThread(
+          input.session.id,
+          codexResult.threadId
+        );
       }
 
       const checks = await this.gitRunner.runChecks(

@@ -3,6 +3,7 @@
 Discord-first ChatOps bridge for Codex running on a trusted local machine.
 
 The bot turns Discord channels into an operator interface for local Codex execution:
+
 - repo-bound work in repo-specific `#codex-sessions` channels
 - generic path-based work in `#codex-chat`
 - one Discord session thread per Codex thread, branch, and workspace
@@ -11,6 +12,7 @@ The bot turns Discord channels into an operator interface for local Codex execut
 
 This project is usable, but it is not a zero-config public SaaS-style bot.
 It is designed for a trusted self-hosted setup where the operator controls:
+
 - the Discord server
 - the local machine running Codex
 - the allowlisted repos and users
@@ -57,5 +59,6 @@ It is designed for a trusted self-hosted setup where the operator controls:
 ## Examples
 
 Deployment workflow examples live in:
+
 - [docs/examples/deploy-staging.yml](docs/examples/deploy-staging.yml)
 - [docs/examples/deploy-production.yml](docs/examples/deploy-production.yml)

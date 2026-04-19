@@ -5,6 +5,7 @@ This guide is for someone who wants to fork the repo and run their own Discord b
 ## Who This Is For
 
 Use this project if you want:
+
 - a self-hosted Discord bot
 - local execution on your own machine
 - your own Codex login
@@ -44,6 +45,7 @@ In the Discord Developer Portal:
    - your guild ID
 
 Invite the bot with permissions for:
+
 - viewing channels
 - sending messages
 - creating and managing threads
@@ -59,6 +61,7 @@ cp repo-map.example.yaml .secrets/repo-map.yaml
 ```
 
 Fill in `.secrets/.env.local` with your own:
+
 - Discord bot token
 - application ID
 - guild ID
@@ -70,6 +73,7 @@ Fill in `.secrets/.env.local` with your own:
 Edit `.secrets/repo-map.yaml`.
 
 For each repo, set:
+
 - `slug`
 - `category_name`
 - `local_path`
@@ -79,6 +83,7 @@ For each repo, set:
 - optional `github_owner` and `github_repo`
 
 If you do not know your Discord channel IDs yet, you can:
+
 - leave placeholder values initially
 - run bootstrap in `create-missing` mode
 - then replace the placeholders with the real IDs
@@ -96,6 +101,7 @@ pnpm bootstrap:discord
 ```
 
 This validates or creates:
+
 - `#codex-chat`
 - `#codex-status`
 - `#codex-approvals`
@@ -131,10 +137,12 @@ curl http://127.0.0.1:3000/readyz
 ## 9. First Use
 
 Repo-bound work:
+
 - open a repo `#codex-sessions`
 - send a plain message
 
 Generic work:
+
 - open `#codex-chat`
 - ask it to inspect a specific path or repo
 

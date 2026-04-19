@@ -39,6 +39,7 @@ Key variables:
 Copy `repo-map.example.yaml` to `.secrets/repo-map.yaml`.
 
 Each repo entry defines:
+
 - `slug`
 - `category_name`
 - `session_channel_id`
@@ -59,6 +60,7 @@ Each repo entry defines:
 ## Channel Model
 
 Global control channels:
+
 - `codex-chat`
 - `codex-status`
 - `codex-approvals`
@@ -66,6 +68,7 @@ Global control channels:
 - `codex-audit`
 
 Per-repo channels:
+
 - `codex-sessions`
 - `codex-events`
 - `codex-deployments`
@@ -73,12 +76,14 @@ Per-repo channels:
 ## Discord Requirements
 
 Required bot capabilities:
+
 - read messages
 - send messages
 - create and manage threads
 - use slash commands
 
 Required privileged intent for plain non-mention messages:
+
 - Message Content intent
 
 ## Systemd Notes
@@ -86,6 +91,7 @@ Required privileged intent for plain non-mention messages:
 The included systemd units are templates, not universal installers.
 
 Before using them on another machine, verify:
+
 - repo checkout path
 - `pnpm` availability
 - `codex` availability on `PATH`
