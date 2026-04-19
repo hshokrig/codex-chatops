@@ -4,6 +4,7 @@
 
 Codex ChatOps bridges Discord and local Codex execution.
 Each operator request becomes a managed session with:
+
 - one Discord thread
 - one Codex thread
 - one local workspace
@@ -60,6 +61,7 @@ Each operator request becomes a managed session with:
 ## Data Model
 
 Main persisted objects:
+
 - `repos`
 - `channel_bindings`
 - `sessions`
@@ -78,6 +80,7 @@ Main persisted objects:
 ## Optional VS Code Session Bridge
 
 The VS Code bridge reads local Codex metadata from:
+
 - `~/.codex/state_5.sqlite`
 - `~/.codex/logs_2.sqlite`
 - `~/.codex/session_index.jsonl`

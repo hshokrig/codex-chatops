@@ -5,6 +5,7 @@
 Use a repo's `#codex-sessions` channel when you want work tied to one mapped repo.
 
 Use `#codex-chat` when you want:
+
 - generic Q&A
 - path-based inspection
 - cross-repo investigation
@@ -26,6 +27,7 @@ Use `#codex-chat` when you want:
 ## Continuing Work
 
 You can continue in two ways:
+
 - post inside the created thread
 - post another top-level message in the same channel
 
@@ -44,6 +46,7 @@ Example:
 ## Attachments and Context
 
 The bot includes:
+
 - your current message
 - the message you replied to, if any
 - the last 10 messages in the channel

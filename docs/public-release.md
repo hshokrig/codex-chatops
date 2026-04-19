@@ -19,6 +19,7 @@ It does not appear to commit live secrets, but it is still tightly coupled to a 
 ### Trusted-host security model
 
 The product assumes:
+
 - one trusted machine
 - a trusted private Discord guild
 - explicit repo allowlists
@@ -53,6 +54,7 @@ The bigger risk is not committed secrets.
 It is that the bot exposes local-code execution via Discord in a trusted environment.
 
 That means:
+
 - a compromised Discord account is high impact
 - a bad repo mapping can expose the wrong local directory
 - a too-broad generic workspace can inspect or modify more than intended
@@ -80,11 +82,13 @@ As written, this is a power tool for a trusted self-hosted operator, not a publi
 ## Audit Summary For This Review
 
 What I checked in this pass:
+
 - current tracked files
 - git history for hardcoded personal paths and common secret patterns
 - tracked docs and runtime templates for fork-time assumptions
 
 What I found:
+
 - no committed live Discord, GitHub, or similar tokens in the scanned history
 - no tracked `.secrets/` or `.chatops/` data
 - one tracked hardcoded personal Codex binary path in `systemd/codex-chatops-auth-check.service` history, already fixed in the current working tree

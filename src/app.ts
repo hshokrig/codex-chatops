@@ -89,7 +89,9 @@ function buildPresence(readyState: ReadyState): {
   };
 }
 
-function buildGenericRepo(env: ReturnType<typeof loadEnv>): RepoDefinition | null {
+function buildGenericRepo(
+  env: ReturnType<typeof loadEnv>
+): RepoDefinition | null {
   if (!env.genericWorkspacePath) {
     return null;
   }
@@ -170,7 +172,9 @@ export async function createApplication() {
     codexAuthHealthy: await checkCodexAuth(env.codexBin),
     discordFailureReason: "Discord login has not succeeded yet."
   };
-  db.failIncompleteRuns("Interrupted before completion. The ChatOps service restarted or the Codex process failed.");
+  db.failIncompleteRuns(
+    "Interrupted before completion. The ChatOps service restarted or the Codex process failed."
+  );
   let lastStatusMessage = "";
   let discordLoginInFlight = false;
 
@@ -341,7 +345,9 @@ export async function createApplication() {
     } catch (error) {
       readyState.discordConnected = false;
       readyState.discordFailureReason =
-        error instanceof Error ? error.message : "Unknown Discord login failure";
+        error instanceof Error
+          ? error.message
+          : "Unknown Discord login failure";
       logger.error(
         { err: error },
         "Discord login failed; service will stay up and retry in the background"
@@ -351,12 +357,9 @@ export async function createApplication() {
     }
   };
 
-  const discordReconnectInterval = setInterval(
-    async () => {
-      await attemptDiscordLogin();
-    },
-    1000 * 60
-  );
+  const discordReconnectInterval = setInterval(async () => {
+    await attemptDiscordLogin();
+  }, 1000 * 60);
 
   return {
     env,

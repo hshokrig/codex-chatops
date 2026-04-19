@@ -18,8 +18,7 @@ function resolveCodexBin(configuredBin: string): string {
 
   const candidates = readdirSync(extensionsRoot, { withFileTypes: true })
     .filter(
-      (entry) =>
-        entry.isDirectory() && entry.name.startsWith("openai.chatgpt-")
+      (entry) => entry.isDirectory() && entry.name.startsWith("openai.chatgpt-")
     )
     .map((entry) => path.join(extensionsRoot, entry.name))
     .sort((left, right) => right.localeCompare(left));
