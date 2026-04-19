@@ -515,17 +515,18 @@ describe("DiscordEventHandler", () => {
       channel: {
         isThread: () => false,
         messages: {
-          fetch: vi.fn(async () =>
-            new Map([
-              [
-                "previous-1",
-                {
-                  author: { username: "alice" },
-                  content: "please check the latest repo state",
-                  createdAt: new Date("2026-04-18T11:59:00.000Z")
-                }
-              ]
-            ])
+          fetch: vi.fn(
+            async () =>
+              new Map([
+                [
+                  "previous-1",
+                  {
+                    author: { username: "alice" },
+                    content: "please check the latest repo state",
+                    createdAt: new Date("2026-04-18T11:59:00.000Z")
+                  }
+                ]
+              ])
           )
         }
       },
@@ -555,6 +556,157 @@ describe("DiscordEventHandler", () => {
     expect(execute).toHaveBeenCalledWith(
       expect.objectContaining({
         conversationContext: expect.stringContaining("Referenced message:")
+      })
+    );
+  });
+
+  it("filters bot-authored messages out of captured conversation context", async () => {
+    const repo = createTestRepo({
+      slug: "__generic__",
+      categoryName: "00-control",
+      sessionChannelId: "",
+      eventsChannelId: "",
+      deploymentsChannelId: "",
+      localPath: `${process.cwd()}`,
+      defaultBranch: "direct",
+      workspaceMode: "direct"
+    });
+    const fixture = createTestDb();
+    cleanups.push(fixture.cleanup);
+
+    const fakeThread = {
+      id: "thread-generic-bot-filter-1",
+      send: vi.fn(async () => undefined)
+    };
+    const execute = vi.fn(async ({ session, conversationContext }) => ({
+      run: {
+        id: "run-generic-bot-filter-1",
+        sessionId: session.id,
+        prompt: "check context isolation",
+        requestedBy: "user-1",
+        status: "succeeded",
+        resultSummary: "Context captured",
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        completedAt: new Date().toISOString()
+      },
+      summary: conversationContext ?? "missing context",
+      changedFiles: [],
+      hasUncommittedChanges: false
+    }));
+
+    const handler = new DiscordEventHandler({
+      client: {
+        user: { id: "bot-1" },
+        channels: { fetch: vi.fn(async () => null) }
+      } as never,
+      env: {
+        discordBotToken: "token",
+        discordApplicationId: "app",
+        discordGuildId: "guild-1",
+        chatopsDbPath: `${fixture.root}/db.sqlite`,
+        chatopsRoot: fixture.root,
+        chatopsRepoMapPath: `${fixture.root}/repo-map.yaml`,
+        codexMode: "sdk",
+        codexBin: "codex",
+        allowThreadPlainReply: false,
+        enablePrs: true,
+        enableDeploys: true,
+        enableDiscordBootstrap: false,
+        discordBootstrapMode: "validate",
+        githubUseGhCli: false,
+        fastifyHost: "127.0.0.1",
+        fastifyPort: 3000,
+        genericWorkspacePath: process.cwd()
+      },
+      db: fixture.db,
+      repoRegistry: new RepoRegistry(fixture.db, repo),
+      sessionManager: new SessionManager(
+        fixture.db,
+        {
+          prepareSessionWorkspace: vi.fn(async () => ({
+            branchName: "direct/__generic__/session-1",
+            worktreePath: process.cwd()
+          }))
+        } as unknown as GitRunner,
+        new ArtifactWriter(fixture.root),
+        fixture.root
+      ),
+      runOrchestrator: { execute } as never,
+      threadManager: {
+        createSessionThread: vi.fn(async () => fakeThread)
+      } as never,
+      summaryRenderer: new SummaryRenderer(),
+      activeRuns: new Map(),
+      runAuthorization: new RunAuthorizationService()
+    });
+
+    const message = {
+      id: "message-generic-bot-filter-1",
+      author: { bot: false, id: "user-1", username: "hossein" },
+      content: "<@bot-1> check whether the recent context stays scoped",
+      createdAt: new Date("2026-04-18T12:00:00.000Z"),
+      inGuild: () => true,
+      mentions: { users: { has: (id: string) => id === "bot-1" } },
+      channel: {
+        isThread: () => false,
+        messages: {
+          fetch: vi.fn(
+            async () =>
+              new Map([
+                [
+                  "previous-bot-1",
+                  {
+                    author: { bot: true, username: "CodexVSC" },
+                    content: "This bot-authored diagnostic should be ignored.",
+                    createdAt: new Date("2026-04-18T11:57:00.000Z")
+                  }
+                ],
+                [
+                  "previous-human-1",
+                  {
+                    author: { username: "Hossein" },
+                    content: "please stay within this thread context",
+                    createdAt: new Date("2026-04-18T11:58:00.000Z")
+                  }
+                ]
+              ])
+          )
+        }
+      },
+      channelId: "random-channel",
+      guildId: "guild-1",
+      attachments: new Map(),
+      member: { id: "user-1", roles: { cache: new Map() } },
+      fetchReference: vi.fn(async () => ({
+        author: { bot: true, username: "CodexVSC" },
+        content: "ignore this referenced bot message too",
+        createdAt: new Date("2026-04-18T11:56:00.000Z")
+      })),
+      reply: vi.fn()
+    };
+
+    await handler.handleMessage(message as never);
+
+    expect(execute).toHaveBeenCalledWith(
+      expect.objectContaining({
+        conversationContext: expect.stringContaining(
+          "please stay within this thread context"
+        )
+      })
+    );
+    expect(execute).toHaveBeenCalledWith(
+      expect.objectContaining({
+        conversationContext: expect.not.stringContaining(
+          "bot-authored diagnostic"
+        )
+      })
+    );
+    expect(execute).toHaveBeenCalledWith(
+      expect.objectContaining({
+        conversationContext: expect.not.stringContaining(
+          "referenced bot message"
+        )
       })
     );
   });

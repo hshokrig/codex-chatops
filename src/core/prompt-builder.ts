@@ -36,7 +36,16 @@ export class PromptBuilder {
       `Current run request: ${input.request}`,
       "",
       "Conversation context:",
-      input.conversationContext?.trim() || "No recent Discord context captured.",
+      input.conversationContext?.trim() ||
+        "No recent Discord context captured.",
+      "",
+      "Context isolation and QA:",
+      "- Treat only the current run request, captured conversation context, and current-session artifacts as in scope.",
+      "- Do not reuse people, chats, tasks, or message drafts from other channels, threads, or external conversations unless they are explicitly present in this run's context.",
+      "- If prior Codex thread history appears to conflict with the current request/context, stop following that stale history and follow the current request/context instead.",
+      "- Before taking any outward action or drafting any user-facing/external message, run a QA pass on the candidate output.",
+      "- QA must reject drafts that are only a generic acknowledgement, `got it`, `ok`, or mostly emoji copied from an earlier drafting pass.",
+      "- QA must verify the content is specifically relevant to the messages in the current channel/thread context; if relevance is weak or unsupported, do not send and report the blocker instead.",
       "",
       "Attachments:",
       !input.attachments || input.attachments.length === 0
